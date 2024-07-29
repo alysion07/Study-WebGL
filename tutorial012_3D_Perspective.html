@@ -12,6 +12,7 @@
     <canvas id="canvas"></canvas>
     <div id="uiContainer">
         <div id="ui">
+            <div id="fudgeFactor"></div>
             <div id="x"></div>
             <div id="y"></div>
             <div id="z"></div>
@@ -35,38 +36,51 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
 <script src="webgl-lessons-ui.js"></script>
 <script>
 
-    "use strict";
+  "use strict";
 
-    var vertexShaderSource = `#version 300 es
-    in vec4 a_position;
-    in vec4 a_color;
+  var vertexShaderSource = `#version 300 es
 
-    uniform mat4 u_matrix;
+  // an attribute is an input (in) to a vertex shader.
+  // It will receive data from a buffer
+  in vec4 a_position;
+  in vec4 a_color;
 
-    out vec4 v_color;
+  uniform mat4 u_matrix;
 
-    void main() {
-        // multiply the position by the matrix
-        gl_Position = u_matrix * a_position;
+  out vec4 v_color;
 
-        // pass the color to the fragment shader
-        v_color = a_color;
-    }
-    `;
+  void main() {
 
-    var fragmentShaderSource = `#version 300 es
-    precision highp float;
+    gl_Position = u_matrix * a_position;
 
-    // the varied color passed from the vertex shader
-    in vec4 v_color;
-
-    out vec4 outColor;
-
-    void main() 
-    {
-        outColor = v_color;
-    }
+    // Pass the color to the fragment shader.
+    v_color = a_color;
+  }
 `;
+
+  var fragmentShaderSource = `#version 300 es
+  precision highp float;
+
+  // the varied color passed from the vertex shader
+  in vec4 v_color;
+
+  out vec4 outColor;
+
+  void main() 
+  {
+      outColor = v_color;
+  }
+`;
+
+function makeZToWMatrix(fudgeFactor) {
+  return [
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, fudgeFactor,
+    0, 0, 0, 1,
+  ];
+}
+
     function main() {
         // Get A WebGL context
         /** @type {HTMLCanvasElement} */
@@ -83,7 +97,7 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
         var colorAttributeLocation = gl.getAttribLocation(program, "a_color");
 
         var matrixLocation = gl.getUniformLocation(program, "u_matrix");
-
+   
         // Create a buffer
         var positionBuffer = gl.createBuffer();
         
@@ -132,21 +146,22 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
             return d * Math.PI / 180;
         }
 
-        var translation = [160, 150, 0];
-        var rotation = [degToRad(120), degToRad(180), degToRad(230)];
+        var translation = [45, 150, 0];
+        var rotation = [degToRad(40), degToRad(25), degToRad(325)];
         var scale = [1, 1, 1];
+        var fudgeFactor = 1;
 
         drawScene();
-
-        webglLessonsUI.setupSlider("#x",      {value: translation[0], slide: updatePosition(0), max: gl.canvas.width});
-        webglLessonsUI.setupSlider("#y",      {value: translation[1],  slide: updatePosition(1), max: gl.canvas.height});
-        webglLessonsUI.setupSlider("#z",      {value: translation[2],  slide: updatePosition(2), max: gl.canvas.height});
-        webglLessonsUI.setupSlider("#angleX", {value: radToDeg(rotation[0]), slide: updateRotation(0), max: 360});
-        webglLessonsUI.setupSlider("#angleY", {value: radToDeg(rotation[1]), slide: updateRotation(1), max: 360});
-        webglLessonsUI.setupSlider("#angleZ", {value: radToDeg(rotation[2]), slide: updateRotation(2), max: 360});
-        webglLessonsUI.setupSlider("#scalex", {value: scale[0], slide: updateScale(0), min: -5, max:5, step: 0.01, precision: 2});
-        webglLessonsUI.setupSlider("#scaley", {value: scale[1], slide: updateScale(1), min: -5, max:5, step: 0.01, precision: 2});
-        webglLessonsUI.setupSlider("#scalez", {value: scale[2], slide: updateScale(2), min: -5, max:5, step: 0.01, precision: 2});
+        webglLessonsUI.setupSlider("#fudgeFactor", {value: fudgeFactor, slide: updateFudgeFactor, max: 2, step: 0.001, precision: 3});
+        webglLessonsUI.setupSlider("#x",           {value: translation[0], slide: updatePosition(0), max: gl.canvas.width});
+        webglLessonsUI.setupSlider("#y",           {value: translation[1],  slide: updatePosition(1), max: gl.canvas.height});
+        webglLessonsUI.setupSlider("#z",           {value: translation[2],  slide: updatePosition(2), max: gl.canvas.height});
+        webglLessonsUI.setupSlider("#angleX",      {value: radToDeg(rotation[0]), slide: updateRotation(0), max: 360});
+        webglLessonsUI.setupSlider("#angleY",      {value: radToDeg(rotation[1]), slide: updateRotation(1), max: 360});
+        webglLessonsUI.setupSlider("#angleZ",      {value: radToDeg(rotation[2]), slide: updateRotation(2), max: 360});
+        webglLessonsUI.setupSlider("#scalex",      {value: scale[0], slide: updateScale(0), min: -5, max:5, step: 0.01, precision: 2});
+        webglLessonsUI.setupSlider("#scaley",      {value: scale[1], slide: updateScale(1), min: -5, max:5, step: 0.01, precision: 2});
+        webglLessonsUI.setupSlider("#scalez",      {value: scale[2], slide: updateScale(2), min: -5, max:5, step: 0.01, precision: 2});
 
         function updatePosition(index) {
             return function (event, ui) {
@@ -169,6 +184,10 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
                 drawScene();
             };
         }
+        function updateFudgeFactor(event, ui) {       
+            fudgeFactor = ui.value;
+            drawScene();
+        }
 
         function drawScene() {
             webglUtils.resizeCanvasToDisplaySize(gl.canvas);
@@ -187,7 +206,8 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
 
             gl.bindVertexArray(vao);
             // Compute the matrix
-            var matrix = m4.projection(gl.canvas.clientWidth, gl.canvas.clientHeight, 400);
+            var matrix = makeZToWMatrix(fudgeFactor);
+            matrix = m4.multiply(matrix, m4.projection(gl.canvas.clientWidth, gl.canvas.clientHeight, 400));
             matrix = m4.translate(matrix, translation[0], translation[1], translation[2]);
             matrix = m4.xRotate(matrix, rotation[0]);
             matrix = m4.yRotate(matrix, rotation[1]);
