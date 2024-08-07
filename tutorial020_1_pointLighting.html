@@ -13,6 +13,7 @@
     <div id="uiContainer">
         <div id="ui">
           <div id="fRotation"></div>
+          <div id="shininess"></div>
         </div>
     </div>
 </body>
@@ -38,6 +39,7 @@ in vec4 a_position;
 in vec3 a_normal;
 
 uniform vec3 u_lightWorldPosition;
+uniform vec3 u_viewWorldPosition;
 
 uniform mat4 u_world;
 uniform mat4 u_worldViewProjection;
@@ -46,6 +48,7 @@ uniform mat4 u_worldInverseTranspose;
 // a varying to pass the color to the fragment shader
 out vec3 v_normal;
 out vec3 v_surfaceToLight;
+out vec3 v_surfaceToView;
 
 // all shaders have a main function
 void main() {
@@ -57,6 +60,14 @@ void main() {
   vec3 surfaceWorldPosition = (u_world * a_position).xyz;
  
   v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+
+  // compute the vector of the surface to the light
+  // and pass it to the fragment shader
+  v_surfaceToLight = u_lightWorldPosition - surfaceWorldPosition;
+
+  // compute the vector of surface to the view/camera
+  // and pass it to the fragmentshader
+  v_surfaceToView = u_viewWorldPosition - surfaceWorldPosition;
 }
 `;
 
@@ -67,8 +78,12 @@ precision highp float;
 // Passed in and varied from the vertex shader.
 in vec3 v_normal;
 in vec3 v_surfaceToLight;
+in vec3 v_surfaceToView;
 
 uniform vec4 u_color;
+uniform float u_shininess;
+uniform vec3 u_lightColor;
+uniform vec3 u_specularColor;
 
 out vec4 outColor;
 
@@ -79,15 +94,24 @@ void main() {
   vec3 normal = normalize(v_normal);
 
   vec3 surfaceToLightDirection = normalize(v_surfaceToLight);
+  vec3 surfaceToViewDirection = normalize(v_surfaceToView);
+  vec3 halfVector = normalize(surfaceToLightDirection + surfaceToViewDirection);
 
   // compute the light by taking the dot product
   // of the normal to  the light's reverse direction
   float light = dot(normal, surfaceToLightDirection);
+  float specular = 0.0;
+  if(light > 0.0) {
+    specular = pow(dot(normal, halfVector), u_shininess);
+  }
 
   outColor = u_color;
   // Lets multiply just the color portion ( not the alpha)
   // by the light
-  outColor.rgb *= light;
+  outColor.rgb *= light * u_lightColor;
+
+  // just add in the specular
+  outColor.rgb += specular * u_specularColor;
 }
 `;
 
@@ -113,8 +137,13 @@ function main() {
   var worldInverseTransposeLocation = gl.getUniformLocation(program, "u_worldInverseTranspose");
   var worldViewProjectionLocation = gl.getUniformLocation(program, "u_worldViewProjection");
   var lightWorldPositionLocation = gl.getUniformLocation(program, "u_lightWorldPosition");
+  var viewWorldPositionLocation = gl.getUniformLocation(program, "u_viewWorldPosition")
   var worldLocation = gl.getUniformLocation(program, "u_world");
+  var shininessLocation = gl.getUniformLocation(program, "u_shininess");
   var colorLocation = gl.getUniformLocation(program, "u_color");
+  var lightLocation = gl.getUniformLocation(program, "u_lightColor");
+  var specularLocation = gl.getUniformLocation(program, "u_specularColor");
+
 
   // Create a buffer
   var positionBuffer = gl.createBuffer();
@@ -167,15 +196,23 @@ function main() {
   // to hold the translation,
   var fieldOfViewRadians = degToRad(60);
   var fRotationRadians = 0;
+  var shininess = 150;
 
   drawScene();
 
   // Setup a ui.
   webglLessonsUI.setupSlider("#fRotation", {value: radToDeg(fRotationRadians), slide: updateRotation, min: -360, max: 360});
+  webglLessonsUI.setupSlider("#shininess", {value: shininess, slide: updateShininess, min: 1, max: 300});
 
   function updateRotation(event, ui) {
     fRotationRadians = degToRad(ui.value);
     drawScene();
+  }
+
+  function updateShininess(event, ui){
+     shininess= ui.value;
+    drawScene();
+
   }
 
   // Draw the scene.
@@ -232,11 +269,23 @@ function main() {
     gl.uniformMatrix4fv(worldViewProjectionLocation, false, worldViewProjectionMatrix);
     gl.uniformMatrix4fv(worldInverseTransposeLocation, false, worldInverseTransposeMatrix);
 
-    // Set the color to use
-    gl.uniform4fv(colorLocation, [0.2, 1, 0.2, 1]); // green
+        // Set the color to use
+        gl.uniform4fv(colorLocation, [0.2, 0.2, 0.7, 1]); // green
 
-    // set the light position
-    gl.uniform3fv(lightWorldPositionLocation, [20, 60, 40]);
+// set the light position
+gl.uniform3fv(lightWorldPositionLocation, [20, 30, 60]);
+
+// set the camera/view position
+gl.uniform3fv(viewWorldPositionLocation, camera);
+
+// set the shininess
+gl.uniform1f(shininessLocation, shininess);
+
+// set the light color
+gl.uniform3fv(lightLocation, m4.normalize([0.8, 1.0, 0.8]));  // red light
+
+// set the specular color
+gl.uniform3fv(specularLocation, m4.normalize([0.8, 1.0, 0.8]));  // red light
 
     // Draw the geometry.
     var primitiveType = gl.TRIANGLES;
