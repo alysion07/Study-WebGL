@@ -37,12 +37,14 @@ function parseOBJ(text) {
   const objPositions = [[0, 0, 0]];
   const objTexcoords = [[0, 0]];
   const objNormals = [[0, 0, 0]];
+  const objColors = [[0, 0, 0]];
 
   // same order as `f` indices
   const objVertexData = [
     objPositions,
     objTexcoords,
     objNormals,
+    objColors,
   ];
 
   // same order as `f` indices
@@ -50,6 +52,7 @@ function parseOBJ(text) {
     [],   // positions
     [],   // texcoords
     [],   // normals
+    [],  // colors
   ];
 
   const materialLibs = [];
@@ -74,10 +77,12 @@ function parseOBJ(text) {
       const position = [];
       const texcoord = [];
       const normal = [];
+      const color = [];
       webglVertexData = [
         position,
         texcoord,
         normal,
+        color,
       ];
       geometry = {
         object,
@@ -87,6 +92,7 @@ function parseOBJ(text) {
           position,
           texcoord,
           normal,
+          color,
         },
       };
       geometries.push(geometry);
@@ -102,38 +108,24 @@ function parseOBJ(text) {
       const objIndex = parseInt(objIndexStr);
       const index = objIndex + (objIndex >= 0 ? 0 : objVertexData[i].length);
       webglVertexData[i].push(...objVertexData[i][index]);
-    });
-  }
 
-  function getExtents(position) {
-    const min = position.slice(0,3);
-    const max = position.slice(0,3);
-    for(let i = 3; i < position.length; i += 3){
-      for(let j = 0; j < 3; ++j) {
-        const v = position[i + j];
-        min[j] = Math.min(v, min[j]);
-        max[j] = Math.max(v, max[j]);
+      // 정점 위치에 대한 인덱스이고(인덱스0) 정점 색상을 파싱했다면
+      // 정점 색상을 복사해 webgl 정점의 생상 데이터로 복사한다.
+      if( i === 0 && objColors.length > 1 ) {
+        geometry.data.color.push(...objColors[index]);
       }
-    }
-    return {min, max};
-  }
-
-  function getGeometriesExtents(geometries) {
-    return geometries.reduce(({min, max}, {data}) => {
-      const minMax = getExtents(data.position);
-      return {
-        min: min.map((min, ndx) => Math.min(minMax.min[ndx], min)),
-        max: max.map((max, ndx) => Math.max(minMax.max[ndx], max)),
-      };
-    }, {
-      min: Array(3).fill(Number.POSITIVE_INFINITY),
-      max: Array(3).fill(Number.NEGATIVE_INFINITY),
     });
   }
 
   const keywords = {
     v(parts) {
-      objPositions.push(parts.map(parseFloat));
+      // 이 부분에서 값이 3개 이상이라면 정점색상 포함
+      if(parts.length > 3)  {
+        objPositions.push(parts.slice(0,3).map(parseFloat));
+        objColors.push(parts.slice(3).map(parseFloat));
+      } else {
+        objPositions.push(parts.map(parseFloat));
+      }
     },
     vn(parts) {
       objNormals.push(parts.map(parseFloat));
@@ -219,16 +211,21 @@ async function main() {
   const vs = `#version 300 es
   in vec4 a_position;
   in vec3 a_normal;
+  in vec4 a_color;
 
   uniform mat4 u_projection;
   uniform mat4 u_view;
   uniform mat4 u_world;
 
   out vec3 v_normal;
+  out vec4 v_color;
+
+
 
   void main() {
     gl_Position = u_projection * u_view * u_world * a_position;
     v_normal = mat3(u_world) * a_normal;
+    v_color = a_color;
   }
   `;
 
@@ -236,6 +233,7 @@ async function main() {
   precision highp float;
 
   in vec3 v_normal;
+  in vec4 v_color;
 
   uniform vec4 u_diffuse;
   uniform vec3 u_lightDirection;
@@ -245,7 +243,8 @@ async function main() {
   void main () {
     vec3 normal = normalize(v_normal);
     float fakeLight = dot(u_lightDirection, normal) * .5 + .5;
-    outColor = vec4(u_diffuse.rgb * fakeLight, u_diffuse.a);
+    vec4 diffuse = u_diffuse * v_color;
+    outColor = vec4(diffuse.rgb* fakeLight, diffuse.a) ;
   }
   `;
 
@@ -253,7 +252,7 @@ async function main() {
   // compiles and links the shaders, looks up attribute and uniform locations
   const meshProgramInfo = twgl.createProgramInfo(gl, [vs, fs]);
 
-  const response = await fetch('https://webgl2fundamentals.org/webgl/resources/models/chair/chair.obj');  
+  const response = await fetch('https://webgl2fundamentals.org/webgl/resources/models/book-vertex-chameleon-study/book.obj');  
   const text = await response.text();
   const obj = parseOBJ(text);
 
@@ -270,25 +269,74 @@ async function main() {
     // shader we can pass it directly into `createBufferInfoFromArrays`
     // from the article "less code more fun".
 
-    // create a buffer for each array by calling
-    // gl.createBuffer, gl.bindBuffer, gl.bufferData
+    // create a buffer for each array by calling gl.createBuffer, gl.bindBuffer, gl.bufferData
+    if (data.position.length === data.color.length) {
+      // result is 3.  helper library는 4개라고 가정하기 때문에 3개라고 알려준다.
+      data.color  = { numComponents: 3, data: data.color};
+    } else {
+      data.color = { value: [1, 1, 1, 1] };
+    }
     const bufferInfo = twgl.createBufferInfoFromArrays(gl, data);
     // fills out a vertex array by calling gl.createVertexArray, gl.bindVertexArray
     // then gl.bindBuffer, gl.enableVertexAttribArray, and gl.vertexAttribPointer for each attribute
     const vao = twgl.createVAOFromBufferInfo(gl, meshProgramInfo, bufferInfo);
     return {
       material: {
-        u_diffuse: [Math.random(), Math.random(), Math.random(), 1],
+        u_diffuse: [1, 1, 1, 1],
       },
       bufferInfo,
       vao,
     };
   });
 
+  
+  function getExtents(position) {
+    const min = position.slice(0,3);
+    const max = position.slice(0,3);
+    for(let i = 3; i < position.length; i += 3){
+      for(let j = 0; j < 3; ++j) {
+        const v = position[i + j];
+        min[j] = Math.min(v, min[j]);
+        max[j] = Math.max(v, max[j]);
+      }
+    }
+    return {min, max};
+  }
+
+  function getGeometriesExtents(geometries) {
+    return geometries.reduce(({min, max}, {data}) => {
+      const minMax = getExtents(data.position);
+      return {
+        min: min.map((min, ndx) => Math.min(minMax.min[ndx], min)),
+        max: max.map((max, ndx) => Math.max(minMax.max[ndx], max)),
+      };
+    }, {
+      min: Array(3).fill(Number.POSITIVE_INFINITY),
+      max: Array(3).fill(Number.NEGATIVE_INFINITY),
+    });
+  }
+
+  const extents = getGeometriesExtents(obj.geometries);
+  const range = m4.subtractVectors(extents.max, extents.min)
+  // amount to move the object so its center is at the origin
+  const objOffset = m4.scaleVector(
+    m4.addVectors(
+      extents.min,
+      m4.scaleVector(range, 0.5)
+    ), 
+    -1
+  );
+      
   const cameraTarget = [0, 0, 0];
-  const cameraPosition = [0, 0, 4];
-  const zNear = 0.1;
-  const zFar = 50;
+  const radius = m4.length(range) * 1.2;
+  const cameraPosition = m4.addVectors(cameraTarget, [
+    0,
+    0,
+    radius,
+  ]);
+  
+  const zNear = radius / 100;
+  const zFar = radius * 3;
 
   function degToRad(deg) {
     return deg * Math.PI / 180;
@@ -326,7 +374,8 @@ async function main() {
 
     // compute the world matrix once since all parts
     // are at the same space.
-    const u_world = m4.yRotation(time);
+    let u_world = m4.yRotation(time);
+    u_world = m4.translate(u_world, ...objOffset);
 
     for (const {bufferInfo, vao, material} of parts) {
       // set the attributes for this part.
