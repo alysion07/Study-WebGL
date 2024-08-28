@@ -87,6 +87,30 @@ void main () {
 }
 `;
 
+const colorVS = `#version 300 es 
+in vec4 a_position;
+
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_world;
+
+void main(){
+  gl_Position = u_projection * u_view * u_world  * a_position;
+}
+`;
+
+const colorFS = `#version 300 es
+precision highp float;
+
+uniform vec4 u_color;
+
+out vec4 outColor;
+
+void main() {
+  outColor = u_color;
+}
+`;
+
 
 function main() {
   // Get A WebGL context
@@ -98,6 +122,7 @@ function main() {
 
 
   const textureProgramInfo = twgl.createProgramInfo(gl, [vs,fs]);
+  const colorProgramInfo = twgl.createProgramInfo(gl, [colorVS, colorFS]);
   twgl.setAttributePrefix("a_");
 
   const sphereBufferInfo = twgl.primitives.createSphereBufferInfo(
@@ -117,7 +142,36 @@ const planeBufferInfo = twgl.primitives.createPlaneBufferInfo (
   );
 
   const planeVAO = twgl.createVAOFromBufferInfo(gl, textureProgramInfo, planeBufferInfo);
+const cubeLinesBufferInfo = twgl.createBufferInfoFromArrays(gl, {
+  position: [
+     0,  0, -1,
+     1,  0, -1,
+     0,  1, -1,
+     1,  1, -1,
+     0,  0,  1,
+     1,  0,  1,
+     0,  1,  1,
+     1,  1,  1,
+  ],
+  indices: [
+    0, 1,
+    1, 3,
+    3, 2,
+    2, 0,
+ 
+    4, 5,
+    5, 7,
+    7, 6,
+    6, 4,
+ 
+    0, 4,
+    1, 5,
+    3, 7,
+    2, 6,
+  ],
+});
 
+const cubeLinesVAO = twgl.createVAOFromBufferInfo(gl, colorProgramInfo, cubeLinesBufferInfo);
   const checkerboardTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, checkerboardTexture);
   gl.texImage2D(
@@ -245,6 +299,24 @@ const planeBufferInfo = twgl.primitives.createPlaneBufferInfo (
     gl.bindVertexArray(planeVAO);
     twgl.setUniforms(textureProgramInfo, planeUniforms);
     twgl.drawBufferInfo(gl, planeBufferInfo);
+
+    // ------ Draw the rectangle --------
+    gl.useProgram(colorProgramInfo.program);
+
+    // 
+    gl.bindVertexArray(cubeLinesVAO);
+
+    const mat = m4.scale(textureWorldMatrix, 1,1,1000);
+
+    twgl.setUniforms(colorProgramInfo, {
+      u_color: [0,0,0,1],
+      u_view: viewMatrix,
+      u_projection: projectionMatrix,
+      u_world: mat,
+    });
+    
+    twgl.drawBufferInfo(gl, cubeLinesBufferInfo, gl.LINES);
+
   }
 
   function render(time) { 
