@@ -7,4 +7,5 @@
 
     void main() {
       gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+      gl_PointSize = 30.0; // Set the size of each point
     }
