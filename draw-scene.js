@@ -34,9 +34,13 @@ function drawScene(gl, programInfo, buffers) {
     mat4.translate(
       modelViewMatrix, // destination matrix
       modelViewMatrix, // matrix to translate
-      [2.0, 1.0, -21.0]
-    ); // amount to translate
-  
+      [0.0, 0.0, -6.0]
+    );// amount to translate
+
+    // Rotate the camera (i.e., the view) by 30 degrees on the Y-axis
+    const angleInRadians = 30 * Math.PI / 180; // Convert degrees to radians
+    mat4.rotateY(modelViewMatrix, modelViewMatrix, angleInRadians);
+
     // Tell WebGL how to pull out the positions from the position
     // buffer into the vertexPosition attribute.
     setPositionAttribute(gl, buffers, programInfo);
@@ -63,15 +67,15 @@ function drawScene(gl, programInfo, buffers) {
   
     {
       const offset = 0;
-      const vertexCount = 9;
-      gl.drawArrays(gl.POINTS, offset, vertexCount);
+      const vertexCount = 36;
+      gl.drawArrays(gl.TRIANGLES, offset, vertexCount);
     }
   }
   
   // Tell WebGL how to pull out the positions from the position
   // buffer into the vertexPosition attribute.
   function setPositionAttribute(gl, buffers, programInfo) {
-    const numComponents = 2; // pull out 2 values per iteration
+    const numComponents = 3; // pull out 2 values per iteration
     const type = gl.FLOAT; // the data in the buffer is 32bit floats
     const normalize = false; // don't normalize
     const stride = 0; // how many bytes to get from one set of values to the next

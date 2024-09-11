@@ -20,9 +20,9 @@ async function main() {
   }
 
   // Set clear color to black, fully opaque
-  gl.clearColor(0.0, 1.0, 0.0, 1.0);
+  //gl.clearColor(0.4, 0.7, 0.8, 0.755);
   // Clear the color buffer with specified clear color
-  gl.clear(gl.COLOR_BUFFER_BIT);
+  //gl.clear(gl.COLOR_BUFFER_BIT);
 
   const vertexShader = await  createShader(gl, gl.VERTEX_SHADER,'vertexShader.glsl');
   const fragmentShader = await  createShader(gl, gl.FRAGMENT_SHADER,'fragmentShader.glsl');
@@ -78,7 +78,7 @@ async function createShader(gl, type, url) {
         console.error(`An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`);
         gl.deleteShader(shader);
         return null;
-    } 
+    }
 
     return shader;
 }
