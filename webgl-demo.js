@@ -23,21 +23,23 @@ async function main() {
   //gl.clearColor(0.4, 0.7, 0.8, 0.755);
   // Clear the color buffer with specified clear color
   //gl.clear(gl.COLOR_BUFFER_BIT);
+  var rotationInRadians = 0;
 
   const vertexShader = await  createShader(gl, gl.VERTEX_SHADER,'vertexShader.glsl');
   const fragmentShader = await  createShader(gl, gl.FRAGMENT_SHADER,'fragmentShader.glsl');
 
   const shaderProgram = initShaderProgram(gl, vertexShader, fragmentShader);
-
   const programInfo = {
     program: shaderProgram,
     attribLocations: {
       vertexPosition: gl.getAttribLocation(shaderProgram, "aVertexPosition"),
+      colorPosition: gl.getAttribLocation(shaderProgram, "aColor"),
     },
     uniformLocations: {
       projectionMatrix: gl.getUniformLocation(shaderProgram,"uProjectionMatrix"),
       modelViewMatrix: gl.getUniformLocation(shaderProgram, "uModelViewMatrix"),
     },
+    angle: rotationInRadians,
   };
 
   // Here's where we call the routine that builds all the
@@ -46,6 +48,14 @@ async function main() {
 
   // Draw the scene
   drawScene(gl, programInfo, buffers);
+
+  webglLessonsUI.setupSlider("#angleY",  {value: rotationInRadians * 180 / Math.PI | 0, slide: updateAngle, max:360});
+
+  function updateAngle(event,ui) {
+    var angleInDegrees = 360 - ui.value;
+    programInfo.angle = angleInDegrees * Math.PI / 180;
+    drawScene(gl, programInfo, buffers);
+  }
 }
 
 //

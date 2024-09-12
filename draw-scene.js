@@ -1,6 +1,7 @@
 function drawScene(gl, programInfo, buffers) {
     gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
     gl.clearDepth(1.0); // Clear everything
+    gl.enable(gl.CULL_FACE);
     gl.enable(gl.DEPTH_TEST); // Enable depth testing
     gl.depthFunc(gl.LEQUAL); // Near things obscure far things
   
@@ -38,18 +39,20 @@ function drawScene(gl, programInfo, buffers) {
     );// amount to translate
 
     // Rotate the camera (i.e., the view) by 30 degrees on the Y-axis
-    const angleInRadians = 30 * Math.PI / 180; // Convert degrees to radians
+    const angleInRadians = programInfo.angle;
     mat4.rotateY(modelViewMatrix, modelViewMatrix, angleInRadians);
+    mat4.rotateX(modelViewMatrix, modelViewMatrix, (30 * Math.PI) / 180);
+    mat4.rotateZ(modelViewMatrix, modelViewMatrix, (20 * Math.PI) / 180);
 
     // Tell WebGL how to pull out the positions from the position
     // buffer into the vertexPosition attribute.
     setPositionAttribute(gl, buffers, programInfo);
-  
-  // 디버깅을 위한 콘솔 로그 추가
-  console.log('programInfo:', programInfo);
-  console.log('projectionMatrix:', projectionMatrix);
-  console.log('modelViewMatrix:', modelViewMatrix
-  );
+
+  // // 디버깅을 위한 콘솔 로그 추가
+  // console.log('programInfo:', programInfo);
+  // console.log('projectionMatrix:', projectionMatrix);
+  // console.log('modelViewMatrix:', modelViewMatrix);
+
     // Tell WebGL to use our program when drawing
     gl.useProgram(programInfo.program);
   
@@ -91,6 +94,18 @@ function drawScene(gl, programInfo, buffers) {
       offset
     );
     gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+    // color buffer
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color);
+    gl.vertexAttribPointer(
+        programInfo.attribLocations.colorPosition,
+        3,
+        gl.FLOAT,
+        false,
+        0,
+        0,
+    );
+    gl.enableVertexAttribArray(programInfo.attribLocations.colorPosition);
   }
   
   export { drawScene };
