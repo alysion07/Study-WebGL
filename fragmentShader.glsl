@@ -1,9 +1,20 @@
 #version 300 es
 precision highp float;
-in vec4 vColor;
+
+// Passed in from the vertex shader.
+in vec3 v_worldNormal;
+in vec3 v_worldPosition;
+
+uniform samplerCube u_texture;
+
+uniform vec3 u_worldCameraPosition;
+
 out vec4 outColor;
- 
- void main() {
-//     outColor = vec4(0.64f, 0.89f, 1.0f, 1.0f); // Red color
-     outColor = vColor; // Red color
+
+void main() {
+   vec3 worldNormal = normalize(v_worldNormal);
+   vec3 eyeToSurfaceDir = normalize(v_worldPosition - u_worldCameraPosition);
+   vec3 direction = reflect(eyeToSurfaceDir,worldNormal);
+
+   outColor = texture(u_texture, direction);
 }

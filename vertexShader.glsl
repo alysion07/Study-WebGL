@@ -1,14 +1,19 @@
-    #version 300 es
+#version 300 es
+in vec4 a_position;
+in vec3 a_normal;
 
-    in vec4 aVertexPosition;
-    in vec4 aColor;
-    out vec4 vColor;
+uniform mat4 u_projection;
+uniform mat4 u_view;
+uniform mat4 u_world;
 
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
+out vec3 v_worldPosition;
+out vec3 v_worldNormal;
 
-    void main() {
-      gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-    //  gl_PointSize = 30.0; // Set the size of each point
-        vColor = aColor;
-    }
+
+void main() {
+  // Multiply the position by the matrix.
+  gl_Position = u_projection * u_view * u_world * a_position;
+
+  v_worldPosition = (u_world * a_position).xyz;
+  v_worldNormal = mat3(u_world) * a_normal;
+}
