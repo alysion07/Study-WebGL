@@ -92,31 +92,6 @@ async function main() {
     {      target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,      url: 'resources/images/computer-history-museum/neg-z.jpg', },
   ];
 
-  //  const faceInfos = [ {
-  //     target: gl.TEXTURE_CUBE_MAP_POSITIVE_X,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/pos-x.jpg',
-  //   },
-  //   {
-  //     target: gl.TEXTURE_CUBE_MAP_NEGATIVE_X,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/neg-x.jpg',
-  //   },
-  //   {
-  //     target: gl.TEXTURE_CUBE_MAP_POSITIVE_Y,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/pos-y.jpg',
-  //   },
-  //   {
-  //     target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Y,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/neg-y.jpg',
-  //   },
-  //   {
-  //     target: gl.TEXTURE_CUBE_MAP_POSITIVE_Z,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/pos-z.jpg',
-  //   },
-  //   {
-  //     target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
-  //     url: 'https://webgl2fundamentals.org/webgl/resources/images/computer-history-museum/neg-z.jpg',
-  //   },
-  // ];
   faceInfos.forEach((faceInfo) => {
     const {target, url} = faceInfo;
     // Upload the canvas to the cubemap face.
