@@ -91,7 +91,7 @@ async function main() {
     {      target: gl.TEXTURE_CUBE_MAP_POSITIVE_Z,      url: 'resources/images/computer-history-museum/pos-z.jpg', },
     {      target: gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,      url: 'resources/images/computer-history-museum/neg-z.jpg', },
   ];
-// test
+// test 2
   faceInfos.forEach((faceInfo) => {
     const {target, url} = faceInfo;
     // Upload the canvas to the cubemap face.
