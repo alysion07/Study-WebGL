@@ -1,49 +1,36 @@
-"use strict";
-
-let vs = `#version 300 es
-
-in vec4 a_position;
-in vec4 a_color;
-
-uniform mat4 u_matrix;
-
-out vec4 v_color;
-
-void main() {
-// Multiply the position by the matrix.
-gl_Position = u_matrix * a_position;
-
-// Pass the color to the fragment shader.
-v_color = a_color;
+async function loadShaders() {
+    const vs = await fetch('vertexShader.glsl').then(r => r.text());
+    const fs = await fetch('fragmentShader.glsl').then(r => r.text());
+    return { vs, fs };
 }
-`;
 
-let fs = `#version 300 es
-precision highp float;
-
-// Passed in from the vertex shader.
-in vec4 v_color;
-
-uniform vec4 u_colorMult;
-
-out vec4 outColor;
-
-void main() {
-outColor = v_color * u_colorMult;
+function degToRad(d) {
+    return d * Math.PI / 180;
 }
-`;
 
-function main() {
+function rand(min, max) {
+    if (max === undefined) {
+        max = min;
+        min = 0;
+    }
+    return Math.random() * (max - min) + min;
+}
+
+function emod(x, n) {
+    return x >= 0 ? (x % n) : ((n - (-x % n)) % n);
+}
+
+async function main() {
     // Get A WebGL context
-    /** @type {HTMLCanvasElement} */
     const canvas = document.querySelector("#canvas");
     const gl = canvas.getContext("webgl2");
     if (!gl) {
-    return;
+        return;
     }
 
-    // Tell the twgl to match position with a_position, n
-    // normal with a_normal etc..
+    const shaders = await loadShaders();
+
+    // Tell the twgl to match position with a_position
     twgl.setAttributePrefix("a_");
 
     const sphereBufferInfo = flattenedPrimitives.createSphereBufferInfo(gl, 10, 12, 6);
@@ -51,27 +38,11 @@ function main() {
     const coneBufferInfo   = flattenedPrimitives.createTruncatedConeBufferInfo(gl, 10, 0, 20, 12, 1, true, false);
 
     // setup GLSL program
-    const programInfo = twgl.createProgramInfo(gl, [vs, fs]);
+    const programInfo = twgl.createProgramInfo(gl, [shaders.vs, shaders.fs]);
 
     const sphereVAO = twgl.createVAOFromBufferInfo(gl, programInfo, sphereBufferInfo);
     const cubeVAO   = twgl.createVAOFromBufferInfo(gl, programInfo, cubeBufferInfo);
     const coneVAO   = twgl.createVAOFromBufferInfo(gl, programInfo, coneBufferInfo);
-
-    function degToRad(d) {
-        return d * Math.PI / 180;
-    }
-
-    function rand(min, max) {
-        if (max === undefined) {
-            max = min;
-            min = 0;
-        }
-        return Math.random() * (max - min) + min;
-    }
-
-    function emod(x, n) {
-        return x >= 0 ? (x % n) : ((n - (-x % n)) % n);
-    }
 
     const fieldOfViewRadians = degToRad(60);
 
@@ -137,9 +108,8 @@ function main() {
         gl.enable(gl.DEPTH_TEST);
 
         // Compute the projection matrix
-        const  aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-        const projectionMatrix =
-        m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+        const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
 
         // Compute the camera's matrix using look at.
         const cameraPosition = [0, 0, 100];
@@ -155,10 +125,10 @@ function main() {
         // Compute the matrices for each object.
         objects.forEach(function(object) {
             object.uniforms.u_matrix = computeMatrix(
-            viewProjectionMatrix,
-            object.translation,
-            object.xRotationSpeed * time,
-            object.yRotationSpeed * time);
+                viewProjectionMatrix,
+                object.translation,
+                object.xRotationSpeed * time,
+                object.yRotationSpeed * time);
         });
 
         // ------ Draw the objects --------

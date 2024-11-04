@@ -1,7 +1,8 @@
 #version 300 es
 precision highp float;
 
-in vec4 v_color; // passed in from vertex shader
+// Passed in from the vertex shader.
+in vec4 v_color;
 
 uniform vec4 u_colorMult;
 
