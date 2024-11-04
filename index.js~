@@ -33,6 +33,9 @@ async function main() {
     // Tell the twgl to match position with a_position
     twgl.setAttributePrefix("a_");
 
+    const targetTexture = gl.createTexture();
+    
+
     const sphereBufferInfo = flattenedPrimitives.createSphereBufferInfo(gl, 10, 12, 6);
     const cubeBufferInfo   = flattenedPrimitives.createCubeBufferInfo(gl, 20);
     const coneBufferInfo   = flattenedPrimitives.createTruncatedConeBufferInfo(gl, 10, 0, 20, 12, 1, true, false);

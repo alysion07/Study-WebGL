@@ -8,5 +8,9 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="twgl-full" level="application" />
+    <orderEntry type="library" name="m4" level="application" />
+    <orderEntry type="library" name="chroma" level="application" />
+    <orderEntry type="library" name="flattened-primitives" level="application" />
   </component>
 </module>
