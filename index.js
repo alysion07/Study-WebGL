@@ -1,7 +1,10 @@
 async function loadShaders() {
     const vs = await fetch('vertexShader.glsl').then(r => r.text());
     const fs = await fetch('fragmentShader.glsl').then(r => r.text());
-    return { vs, fs };
+    const pic_vs = await fetch('picking_vs.glsl').then(r => r.text());
+    const pic_fs = await fetch('picking_fs.glsl').then(r => r.text());
+
+    return { vs, fs, pic_vs, pic_fs };
 }
 
 function degToRad(d) {
@@ -33,12 +36,54 @@ async function main() {
     // Tell the twgl to match position with a_position
     twgl.setAttributePrefix("a_");
 
+    const targetTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    const depthBuffer = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+
+    function setFramebufferAttachmentSizes(width,height) {
+        gl.bindTexture(gl.TEXTURE_2D, targetTexture);
+        const level = 0;
+        const internalFormat = gl.RGBA;
+        const border = 0;
+        const format = gl.RGBA;
+        const type = gl.UNSIGNED_BYTE;
+        const data = null;
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type,data);
+        gl.bindRenderbuffer(gl.RENDERBUFFER,depthBuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
+    }
+
+    // create and bind the framebuffer
+    const fb = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+
+    const attachmentPoint = gl.COLOR_ATTACHMENT0;
+    const level = 0;
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depthBuffer);
+
+    const options = {
+        attribLocations: {
+            a_position: 0,
+            a_color: 1,
+        },
+    };
+
+    const programInfo = twgl.createProgramInfo(gl, [shaders.vs, shaders.fs], options);
+    const pickingProgramInfo = twgl.createProgramInfo(gl, [shaders.pic_vs, shaders.pic_vs], options);
+
+
+
     const sphereBufferInfo = flattenedPrimitives.createSphereBufferInfo(gl, 10, 12, 6);
     const cubeBufferInfo   = flattenedPrimitives.createCubeBufferInfo(gl, 20);
     const coneBufferInfo   = flattenedPrimitives.createTruncatedConeBufferInfo(gl, 10, 0, 20, 12, 1, true, false);
 
     // setup GLSL program
-    const programInfo = twgl.createProgramInfo(gl, [shaders.vs, shaders.fs]);
 
     const sphereVAO = twgl.createVAOFromBufferInfo(gl, programInfo, sphereBufferInfo);
     const cubeVAO   = twgl.createVAOFromBufferInfo(gl, programInfo, cubeBufferInfo);
@@ -99,7 +144,13 @@ async function main() {
     function drawScene(time) {
         time = time * 0.0005;
 
-        twgl.resizeCanvasToDisplaySize(gl.canvas);
+        if(webglUtils.resizeCanvasToDisplaySize(gl.canvas)) {
+            // the canvas was resized, make the framebuffer attachments match
+            setFramebufferAttachmentSizes(gl.canvas.width, gl.canvas.height);
+
+        }
+
+
 
         // Tell WebGL how to convert from clip space to pixels
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -160,6 +211,23 @@ async function main() {
 
         requestAnimationFrame(drawScene);
     }
+
+    function drawObject(objectToDraw, overrideProgramInfo) {
+        objectToDraw.forEach(function(object) {
+            const programInfo = overrideProgramInfo || object.programInfo;
+            const bufferInfo = object.bufferInfo;
+            const vertexArray = object.vertexArray;
+
+            gl.useProgram(programInfo.program);
+            // setup all the needed attributes.
+            gl.bindVertexArray(vertexArray);
+            // set the uniforms
+            twgl.setUniforms(programInfo, object.uniforms);
+            // draw (calls gl.drawArrays or gl.drawElements)
+            twgl.drawBufferInfo(gl, obejct.bufferInfo);
+        });
+    }
 }
+
 
 main().then(r => console.log(r));
