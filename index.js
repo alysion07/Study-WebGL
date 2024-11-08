@@ -65,6 +65,8 @@ async function main() {
     }
 
     const fieldOfViewRadians = degToRad(60);
+    const near = 1;
+    const far = 2000;
 
     // put the shapes in an array so it's easy to pick them at random
     const shapes = [
@@ -75,6 +77,7 @@ async function main() {
 
     const objectsToDraw = [];
     const objects = [];
+    const viewProjectionMatrix = m4.identity();
 
     // Make infos for each object for each object.
     const baseHue = rand(0, 360);
@@ -89,7 +92,8 @@ async function main() {
         const object = {
             uniforms: {
                 u_color_multiply: chroma.hsv(positiveModulo(baseHue + rand(0, 120), 360), rand(0.5, 1), rand(0.5, 1)).gl(),
-                u_matrix: m4.identity(),
+                u_world: m4.identity(),
+                u_viewProjection: viewProjectionMatrix,
                 u_id: [
                     ((id >>  0) & 0xFF) / 0xFF, // '& 0xFF' 8비트 추출을 위한 비트 마스킹
                     ((id >>  8) & 0xFF) / 0xFF, // '/ 0xFF' 0 ~ 1 사이값으로 정규화
@@ -132,13 +136,11 @@ async function main() {
         const format = gl.RGBA;
         const type = gl.UNSIGNED_BYTE;
         const data = null;
-        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
-            width, height, border,
-            format, type, data);
-
+        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
         gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
         gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
     }
+    setFramebufferAttachmentSizes(1,1);
 
     // Create and bind the framebuffer
     const fb = gl.createFramebuffer();
@@ -152,14 +154,16 @@ async function main() {
     // make a depth buffer and the same size as the targetTexture
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
 
-    function computeMatrix(viewProjectionMatrix, translation, xRotation, yRotation) {
-        let matrix = m4.translate(viewProjectionMatrix,
+    function computeMatrix(translation, xRotation, yRotation) {
+        let matrix = m4.translation(
             translation[0],
             translation[1],
             translation[2]);
         matrix = m4.xRotate(matrix, xRotation);
         return m4.yRotate(matrix, yRotation);
     }
+
+    requestAnimationFrame(drawScene);
 
     requestAnimationFrame(drawScene);
 
@@ -192,16 +196,7 @@ async function main() {
     function drawScene(time) {
         time *= 0.0005;
         ++frameCount;
-
-        if (twgl.resizeCanvasToDisplaySize(gl.canvas)) {
-            // 캔버스가 리사이즈 되었다면 framebuffer attachment 를 맞춰준다.
-            setFramebufferAttachmentSizes(gl.canvas.width, gl.canvas.height);
-        }
-
-        // Compute the projection matrix
-        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-        const projectionMatrix =
-            m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+        twgl.resizeCanvasToDisplaySize(gl.canvas);
 
         // Compute the camera's matrix using look at.
         const cameraPosition = [0, 0, 100];
@@ -212,12 +207,9 @@ async function main() {
         // Make a view matrix from the camera matrix.
         const viewMatrix = m4.inverse(cameraMatrix);
 
-        const viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
-
         // Compute the matrices for each object.
         objects.forEach(function(object) {
-            object.uniforms.u_matrix = computeMatrix(
-                viewProjectionMatrix,
+            object.uniforms.u_world = computeMatrix(
                 object.translation,
                 object.xRotationSpeed * time,
                 object.yRotationSpeed * time);
@@ -225,34 +217,62 @@ async function main() {
 
         // ------ Draw the objects to the texture --------
 
+        // Figure out what pixel is under the mouse and setuo
+        // a frustum to render jest pixel
+        {
+            const aspect  = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            const top = Math.tan(fieldOfViewRadians * 0.5) * near;
+            const bottom = -top;
+            const left = aspect * bottom;
+            const right = aspect * top;
+            const width = Math.abs(right - left);
+            const height = Math.abs(top - bottom);
+
+            // compute the portion of the near plane covers the 1pixel under mouse
+            const pixelX = mouseX * gl.canvas.width / gl.canvas.clientWidth;
+            const pixelY = gl.canvas.height - mouseY * gl.canvas.height / gl.canvas.clientHeight - 1;
+
+            const subLeft = left + pixelX * width / gl.canvas.width;
+            const subBottom = bottom + pixelY * height / gl.canvas.height;
+            const subWidth = width / gl.canvas.width;
+            const subHeight = height / gl.canvas.height;
+
+            // make a frustum for that 1 pixel
+            //left, right, bottom, top, near, far, dst
+            const projectionMatrix = m4.frustum(
+                subLeft,
+                subLeft + subWidth,
+                subBottom,
+                subBottom + subHeight,
+                near,
+                far,);
+            m4.multiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
+        }
+        // ------ Draw the objects to the canvas
+
         gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.viewport(0, 0, 1, 1);
 
         gl.enable(gl.CULL_FACE);
         gl.enable(gl.DEPTH_TEST);
 
-        // Clear the canvas AND the depth buffer.
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        drawObjects(objectsToDraw, pickingProgramInfo);
+        drawObjects(objectsToDraw, pickingProgramInfo  );
 
-        // ------ Figure out what pixel is under the mouse and read it
-
-        const pixelX = mouseX * gl.canvas.width / gl.canvas.clientWidth;
-        const pixelY = gl.canvas.height - mouseY * gl.canvas.height / gl.canvas.clientHeight - 1;
+        // --- read 1 pixcel
         const data = new Uint8Array(4);
         gl.readPixels(
-            pixelX,            // x
-            pixelY,            // y
-            1,           // width
-            1,           // height
-            gl.RGBA,           // format
-            gl.UNSIGNED_BYTE,  // type
-            data);             // typed array to hold result
+            0,
+            0,
+            1,
+            1,
+            gl.RGBA,
+            gl.UNSIGNED_BYTE,
+            data);
         const id = data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24);
 
-        // restore the object's color
-        if (oldPickNdx >= 0) {
+        if(oldPickNdx >= 0 ){
             const object = objects[oldPickNdx];
             object.uniforms.u_color_multiply = oldPickColor;
             oldPickNdx = -1;
@@ -264,14 +284,20 @@ async function main() {
             oldPickNdx = pickNdx;
             const object = objects[pickNdx];
             oldPickColor = object.uniforms.u_color_multiply;
-            // frameCount 값 축소 후, 값에 따라 색상을 Red or Yellow 설정
-            object.uniforms.u_color_multiply = (frameCount & 0x8) ? [1, 0, 0, 1] : [1, 1, 0, 1]; // red : yellow
+            object.uniforms.u_color_multiply = (frameCount & 0x8) ? [1, 0, 0, 1] : [1, 1, 0, 1];
         }
 
-        // ------ Draw the objects to the canvas
+        // --- draw the objects to the canvas
+        {
+            //compute the projection matrix
+            const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, near, far);
+
+            m4.multiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
+        }
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.viewport(0,0,gl.canvas.width, gl.canvas.height);
 
         drawObjects(objectsToDraw);
 
