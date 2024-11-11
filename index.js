@@ -37,7 +37,7 @@ async function main() {
     const programInfo = twgl.createProgramInfo(gl, [vs, fs], options);
     const pickingProgramInfo = twgl.createProgramInfo(gl, [pickingVS, pickingFS], options);
 
-    // creates buffers with position, normal, texcoord, and vertex color
+    // creates buffers with position, normal, texture coordinate, and vertex color
     // data for primitives by calling gl.createBuffer, gl.bindBuffer,
     // and gl.bufferData
     const sphereBufferInfo = flattenedPrimitives.createSphereBufferInfo(gl, 10, 12, 6);
@@ -217,7 +217,7 @@ async function main() {
 
         // ------ Draw the objects to the texture --------
 
-        // Figure out what pixel is under the mouse and setuo
+        // Figure out what pixel is under the mouse and set up
         // a frustum to render jest pixel
         {
             const aspect  = gl.canvas.clientWidth / gl.canvas.clientHeight;
@@ -260,7 +260,7 @@ async function main() {
 
         drawObjects(objectsToDraw, pickingProgramInfo  );
 
-        // --- read 1 pixcel
+        // --- read 1 pixel
         const data = new Uint8Array(4);
         gl.readPixels(
             0,
