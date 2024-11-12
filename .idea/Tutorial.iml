@@ -12,5 +12,6 @@
     <orderEntry type="library" name="m4" level="application" />
     <orderEntry type="library" name="chroma" level="application" />
     <orderEntry type="library" name="flattened-primitives" level="application" />
+    <orderEntry type="library" name="webgl-utils" level="application" />
   </component>
 </module>

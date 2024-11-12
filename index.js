@@ -1,314 +1,797 @@
-// WebGL2 - Picking - GPU
-// from https://webgl2fundamentals.org/webgl/webgl-picking-w-gpu.html
+// WebGL2 - 3D Camera
+// from https://webgl2fundamentals.org/webgl/webgl-3d-camera.html
+
+
 "use strict";
 
-async function loadShader(url) {
-    const response = await fetch(url);
-    return response.text();
+const vertexShaderSource = `#version 300 es
+
+in vec4 a_position;
+in vec4 a_color;
+
+uniform mat4 u_matrix;
+
+out vec4 v_color;
+
+void main() {
+  gl_Position = u_matrix * a_position;
+  v_color = a_color;
 }
-async function main() {
+`;
+
+const fragmentShaderSource = `#version 300 es
+
+precision highp float;
+
+in vec4 v_color;
+
+out vec4 outColor;
+
+void main() {
+  outColor = v_color;
+}
+`;
+
+
+function main() {
     // Get A WebGL context
     /** @type {HTMLCanvasElement} */
-    const canvas = document.getElementById("canvas");
+    const canvas = document.querySelector("#canvas");
     const gl = canvas.getContext("webgl2");
     if (!gl) {
         return;
     }
 
-    // 쉐이더 로드
-    const vs = await loadShader('vertexShader.glsl');
-    const fs = await loadShader('fragmentShader.glsl');
-    const pickingVS = await loadShader('picking_vs.glsl');
-    const pickingFS = await loadShader('picking_fs.glsl');
+    // Use our boilerplate utils to compile the shaders and link into a program
+    const program = webglUtils.createProgramFromSources(gl,
+        [vertexShaderSource, fragmentShaderSource]);
 
-    // Tell the twgl to match position with a_position, n
-    // normal with a_normal etc
-    twgl.setAttributePrefix("a_");
+    // look up where the vertex data needs to go.
+    const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+    const colorAttributeLocation = gl.getAttribLocation(program, "a_color");
 
-    // setup GLSL program
-    // note: we need the attribute positions to match across programs
-    // so that we only need one vertex array per shape
-    const options = {
-        attribLocations: {
-            a_position: 0,
-            a_color: 1,
-        },
-    };
-    const programInfo = twgl.createProgramInfo(gl, [vs, fs], options);
-    const pickingProgramInfo = twgl.createProgramInfo(gl, [pickingVS, pickingFS], options);
+    // look up uniform locations
+    const matrixLocation = gl.getUniformLocation(program, "u_matrix");
 
-    // creates buffers with position, normal, texture coordinate, and vertex color
-    // data for primitives by calling gl.createBuffer, gl.bindBuffer,
-    // and gl.bufferData
-    const sphereBufferInfo = flattenedPrimitives.createSphereBufferInfo(gl, 10, 12, 6);
-    const cubeBufferInfo   = flattenedPrimitives.createCubeBufferInfo(gl, 20);
-    const coneBufferInfo   = flattenedPrimitives.createTruncatedConeBufferInfo(gl, 10, 0, 20, 12, 1, true, false);
+    // Create a buffer
+    const positionBuffer = gl.createBuffer();
 
-    const sphereVAO = twgl.createVAOFromBufferInfo(gl, programInfo, sphereBufferInfo);
-    const cubeVAO   = twgl.createVAOFromBufferInfo(gl, programInfo, cubeBufferInfo);
-    const coneVAO   = twgl.createVAOFromBufferInfo(gl, programInfo, coneBufferInfo);
+    // Create a vertex array object (attribute state)
+    const vao = gl.createVertexArray();
+
+    // and make it the one we're currently working with
+    gl.bindVertexArray(vao);
+
+    // Turn on the attribute
+    gl.enableVertexAttribArray(positionAttributeLocation);
+
+    // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    // Set Geometry.
+   //setGeometry(gl);
+    setCube(gl);
+
+    {
+        // Tell the attribute how to get data out of positionBuffer (ARRAY_BUFFER)
+        const size = 3;          // 3 components per iteration
+        const type = gl.FLOAT;   // the data is 32bit floats
+        const normalize = false; // don't normalize the data
+        const stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+        const offset = 0;        // start at the beginning of the buffer
+        gl.vertexAttribPointer(positionAttributeLocation, size, type, normalize, stride, offset);
+    }
+    // create the color buffer, make it the current ARRAY_BUFFER
+    // and copy in the color values
+    const colorBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+    setColors(gl);
+
+    // Turn on the attribute
+    gl.enableVertexAttribArray(colorAttributeLocation);
+
+    {// Tell the attribute how to get data out of colorBuffer (ARRAY_BUFFER)
+        const size = 3;          // 3 components per iteration
+        const type = gl.UNSIGNED_BYTE;   // the data is 8bit unsigned bytes
+        const normalize = true;  // convert from 0-255 to 0.0-1.0
+        const stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next color
+        const offset = 0;        // start at the beginning of the buffer
+        gl.vertexAttribPointer(colorAttributeLocation, size, type, normalize, stride, offset);
+    }
+
+    function radToDeg(r) {
+        return r * 180 / Math.PI;
+    }
 
     function degToRad(d) {
         return d * Math.PI / 180;
     }
 
-    function rand(min, max) {
-        if (max === undefined) {
-            max = min;
-            min = 0;
-        }
-        return Math.random() * (max - min) + min;
-    }
-
-    function positiveModulo(x, n) {
-        return x >= 0 ? (x % n) : ((n - (-x % n)) % n);
-    }
-
+    // First let's make some variables
+    // to hold the translation,
     const fieldOfViewRadians = degToRad(60);
-    const near = 1;
-    const far = 2000;
+    let cameraAngleRadians = degToRad(0);
+    let cameraAngleRadiansY = degToRad(0);
+    let cameraAngleRadiansZ = degToRad(0);
 
-    // put the shapes in an array so it's easy to pick them at random
-    const shapes = [
-        { bufferInfo: sphereBufferInfo, vertexArray: sphereVAO, },
-        { bufferInfo: cubeBufferInfo,   vertexArray: cubeVAO, },
-        { bufferInfo: coneBufferInfo,   vertexArray: coneVAO, },
-    ];
+    drawScene();
 
-    const objectsToDraw = [];
-    const objects = [];
-    const viewProjectionMatrix = m4.identity();
+    // Setup a ui.
+    webglLessonsUI.setupSlider("#x", {value: radToDeg(cameraAngleRadians), slide: updateCameraAngle, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#y", {value: radToDeg(cameraAngleRadiansY), slide: updateCameraAngle, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#z", {value: radToDeg(cameraAngleRadiansZ), slide: updateCameraAngle, min: -360, max: 360});
+  //  webglLessonsUI.setupSlider("#x", {value: translation[0], slide: updatePosition(0), max: gl.canvas.width });
 
-    // Make infos for each object for each object.
-    const baseHue = rand(0, 360);
-    const numObjects = 400;
-    for (let ii = 0; ii < numObjects; ++ii) {
-        const id = ii + 1;
+    function updateCameraAngle(event, ui) {
+        cameraAngleRadians = degToRad(ui.value);
 
-        // pick a shape
-        const shape = shapes[rand(shapes.length) | 0];
-
-        // make an object.
-        const object = {
-            uniforms: {
-                u_color_multiply: chroma.hsv(positiveModulo(baseHue + rand(0, 120), 360), rand(0.5, 1), rand(0.5, 1)).gl(),
-                u_world: m4.identity(),
-                u_viewProjection: viewProjectionMatrix,
-                u_id: [
-                    ((id >>  0) & 0xFF) / 0xFF, // '& 0xFF' 8비트 추출을 위한 비트 마스킹
-                    ((id >>  8) & 0xFF) / 0xFF, // '/ 0xFF' 0 ~ 1 사이값으로 정규화
-                    ((id >> 16) & 0xFF) / 0xFF,
-                    ((id >> 24) & 0xFF) / 0xFF,
-                ],
-            },
-            translation: [rand(-100, 100), rand(-100, 100), rand(-150, -50)],
-            xRotationSpeed: rand(0.8, 1.2),
-            yRotationSpeed: rand(0.8, 1.2),
-        };
-        objects.push(object);
-
-        // Add it to the list of things to draw.
-        objectsToDraw.push({
-            programInfo: programInfo,
-            bufferInfo: shape.bufferInfo,
-            vertexArray: shape.vertexArray,
-            uniforms: object.uniforms,
-        });
+        drawScene();
     }
-
-    // Create a texture to render to
-    const targetTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-    // create a depth renderbuffer
-    const depthBuffer = gl.createRenderbuffer();
-    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-
-    function setFramebufferAttachmentSizes(width, height) {
-        gl.bindTexture(gl.TEXTURE_2D, targetTexture);
-        // define size and format of level 0
-        const level = 0;
-        const internalFormat = gl.RGBA;
-        const border = 0;
-        const format = gl.RGBA;
-        const type = gl.UNSIGNED_BYTE;
-        const data = null;
-        gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, format, type, data);
-        gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
-        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
-    }
-    setFramebufferAttachmentSizes(1,1);
-
-    // Create and bind the framebuffer
-    const fb = gl.createFramebuffer();
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-
-    // attach the texture as the first color attachment
-    const attachmentPoint = gl.COLOR_ATTACHMENT0;
-    const level = 0;
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, attachmentPoint, gl.TEXTURE_2D, targetTexture, level);
-
-    // make a depth buffer and the same size as the targetTexture
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
-
-    function computeMatrix(translation, xRotation, yRotation) {
-        let matrix = m4.translation(
-            translation[0],
-            translation[1],
-            translation[2]);
-        matrix = m4.xRotate(matrix, xRotation);
-        return m4.yRotate(matrix, yRotation);
-    }
-
-    requestAnimationFrame(drawScene);
-
-    requestAnimationFrame(drawScene);
-
-    function drawObjects(objectsToDraw, overrideProgramInfo) {
-        objectsToDraw.forEach(function(object) {
-            const programInfo = overrideProgramInfo || object.programInfo;
-            const vertexArray = object.vertexArray;
-
-            gl.useProgram(programInfo.program);
-
-            // Setup all the needed attributes.
-            gl.bindVertexArray(vertexArray);
-
-            // Set the uniforms.
-            twgl.setUniforms(programInfo, object.uniforms);
-
-            // Draw (calls gl.drawArrays or gl.drawElements)
-            twgl.drawBufferInfo(gl, object.bufferInfo);
-        });
-    }
-
-    // mouseX and mouseY are in CSS display space relative to canvas
-    let mouseX = -1;
-    let mouseY = -1;
-    let oldPickNdx = -1;
-    let oldPickColor;
-    let frameCount = 0;
 
     // Draw the scene.
-    function drawScene(time) {
-        time *= 0.0005;
-        ++frameCount;
-        twgl.resizeCanvasToDisplaySize(gl.canvas);
+    function drawScene() {
+        //const objectCount = 5;
+        //const radius = 200;
+        const objectCount = 1;
+        const radius = 6;
 
-        // Compute the camera's matrix using look at.
-        const cameraPosition = [0, 0, 100];
-        const target = [0, 0, 0];
-        const up = [0, 1, 0];
-        const cameraMatrix = m4.lookAt(cameraPosition, target, up);
+        webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+
+        // Tell WebGL how to convert from clip space to pixels
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+
+        // Clear the canvas
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // turn on depth testing
+        gl.enable(gl.DEPTH_TEST);
+
+        // tell webgl to cull faces
+        gl.enable(gl.CULL_FACE);
+
+        // Tell it to use our program (pair of shaders)
+        gl.useProgram(program);
+
+        // Bind the attribute/buffer set we want.
+        gl.bindVertexArray(vao);
+
+        // Compute the matrix
+        const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+        const zNear = 1;
+        const zFar = 2000;
+        const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
+
+        let cameraMatrix = m4.yRotation(cameraAngleRadians);
+        cameraMatrix = m4.translate(cameraMatrix, 0, 0, radius * 1.5);
 
         // Make a view matrix from the camera matrix.
         const viewMatrix = m4.inverse(cameraMatrix);
 
-        // Compute the matrices for each object.
-        objects.forEach(function(object) {
-            object.uniforms.u_world = computeMatrix(
-                object.translation,
-                object.xRotationSpeed * time,
-                object.yRotationSpeed * time);
-        });
+        // create a viewProjection matrix. This will both apply perspective
+        // AND move the world so that the camera is effectively the origin
+        const viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
 
-        // ------ Draw the objects to the texture --------
+        // Draw 'F's in a circle
+        for (let ii = 0; ii < objectCount; ++ii) {
+            const angle = ii * Math.PI * 2 / objectCount;
 
-        // Figure out what pixel is under the mouse and set up
-        // a frustum to render jest pixel
-        {
-            const aspect  = gl.canvas.clientWidth / gl.canvas.clientHeight;
-            const top = Math.tan(fieldOfViewRadians * 0.5) * near;
-            const bottom = -top;
-            const left = aspect * bottom;
-            const right = aspect * top;
-            const width = Math.abs(right - left);
-            const height = Math.abs(top - bottom);
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            const matrix = m4.translate(viewProjectionMatrix, x, 0, z);
 
-            // compute the portion of the near plane covers the 1pixel under mouse
-            const pixelX = mouseX * gl.canvas.width / gl.canvas.clientWidth;
-            const pixelY = gl.canvas.height - mouseY * gl.canvas.height / gl.canvas.clientHeight - 1;
+            // Set the matrix.
+            gl.uniformMatrix4fv(matrixLocation, false, matrix);
 
-            const subLeft = left + pixelX * width / gl.canvas.width;
-            const subBottom = bottom + pixelY * height / gl.canvas.height;
-            const subWidth = width / gl.canvas.width;
-            const subHeight = height / gl.canvas.height;
-
-            // make a frustum for that 1 pixel
-            //left, right, bottom, top, near, far, dst
-            const projectionMatrix = m4.frustum(
-                subLeft,
-                subLeft + subWidth,
-                subBottom,
-                subBottom + subHeight,
-                near,
-                far,);
-            m4.multiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
+            // Draw the geometry.
+            const primitiveType = gl.TRIANGLES;
+            const offset = 0;
+            const count = 6 * 6; // 16 face , 6 coordinates
+            gl.drawArrays(primitiveType, offset, count);
         }
-        // ------ Draw the objects to the canvas
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-        gl.viewport(0, 0, 1, 1);
-
-        gl.enable(gl.CULL_FACE);
-        gl.enable(gl.DEPTH_TEST);
-
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-        drawObjects(objectsToDraw, pickingProgramInfo  );
-
-        // --- read 1 pixel
-        const data = new Uint8Array(4);
-        gl.readPixels(
-            0,
-            0,
-            1,
-            1,
-            gl.RGBA,
-            gl.UNSIGNED_BYTE,
-            data);
-        const id = data[0] + (data[1] << 8) + (data[2] << 16) + (data[3] << 24);
-
-        if(oldPickNdx >= 0 ){
-            const object = objects[oldPickNdx];
-            object.uniforms.u_color_multiply = oldPickColor;
-            oldPickNdx = -1;
-        }
-
-        // highlight object under mouse
-        if (id > 0) {
-            const pickNdx = id - 1;
-            oldPickNdx = pickNdx;
-            const object = objects[pickNdx];
-            oldPickColor = object.uniforms.u_color_multiply;
-            object.uniforms.u_color_multiply = (frameCount & 0x8) ? [1, 0, 0, 1] : [1, 1, 0, 1];
-        }
-
-        // --- draw the objects to the canvas
-        {
-            //compute the projection matrix
-            const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-            const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, near, far);
-
-            m4.multiply(projectionMatrix, viewMatrix, viewProjectionMatrix);
-        }
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0,0,gl.canvas.width, gl.canvas.height);
-
-        drawObjects(objectsToDraw);
-
-        requestAnimationFrame(drawScene);
     }
-
-    gl.canvas.addEventListener('mousemove', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        mouseX = e.clientX - rect.left;
-        mouseY = e.clientY - rect.top;
-    });
 }
 
-main().then(r => console.log(r));
+function setCube(gl) {
+    const positions = new Float32Array([
+        // 앞면 (z = 1.0)
+        -1.0, -1.0,  1.0,
+        1.0, -1.0,  1.0,
+        0.6,  1.0,  0.6,
+        -1.0, -1.0,  1.0,
+        0.6,  1.0,  0.6,
+        -0.6,  1.0,  0.6,
+
+        // 뒷면 (z = -1.0)
+        -1.0, -1.0, -1.0,
+        -0.6,  1.0, -0.6,
+        0.6,  1.0, -0.6,
+        0.6,  1.0, -0.6,
+        1.0, -1.0, -1.0,
+        -1.0, -1.0, -1.0,
+
+        // 윗면
+        -0.6,  1.0, -0.6,
+        -0.6,  1.0,  0.6,
+        0.6,  1.0,  0.6,
+        -0.6,  1.0, -0.6,
+        0.6,  1.0,  0.6,
+        0.6,  1.0, -0.6,
+
+        // 아랫면
+        -1.0, -1.0, -1.0,
+        1.0, -1.0, -1.0,
+        1.0, -1.0,  1.0,
+        -1.0, -1.0, 1.0,
+        -1.0, -1.0, -1.0,
+        1.0, -1.0,  1.0,
+
+        // 오른쪽면
+        1.0, -1.0, -1.0,
+        0.6,  1.0, -0.6,
+        0.6,  1.0,  0.6,
+        1.0, -1.0, -1.0,
+        0.6,  1.0,  0.6,
+        1.0, -1.0,  1.0,
+
+        // 왼쪽면
+        -1.0, -1.0, -1.0,
+        -1.0, -1.0,  1.0,
+        -0.6,  1.0,  0.6,
+        -1.0, -1.0, -1.0,
+        -0.6,  1.0,  0.6,
+        -0.6,  1.0, -0.6
+    ]);
+
+    let matrix  = m4.translation(0.5, 0.5, 0);
+
+    for (let ii = 0; ii < positions.length; ii += 3) {
+        const vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
+        positions[ii + 0] = vector[0];
+        positions[ii + 1] = vector[1];
+        positions[ii + 2] = vector[2];
+    }
+
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+}
+
+// Fill the current ARRAY_BUFFER buffer
+// with the values that define a letter 'F'.
+function setGeometry(gl) {
+    const positions = new Float32Array([
+        // left column front
+        0,   0,  0,
+        0, 150,  0,
+        30,   0,  0,
+        0, 150,  0,
+        30, 150,  0,
+        30,   0,  0,
+
+        // top rung front
+        30,   0,  0,
+        30,  30,  0,
+        100,   0,  0,
+        30,  30,  0,
+        100,  30,  0,
+        100,   0,  0,
+
+        // middle rung front
+        30,  60,  0,
+        30,  90,  0,
+        67,  60,  0,
+        30,  90,  0,
+        67,  90,  0,
+        67,  60,  0,
+
+        // left column back
+        0,   0,  30,
+        30,   0,  30,
+        0, 150,  30,
+        0, 150,  30,
+        30,   0,  30,
+        30, 150,  30,
+
+        // top rung back
+        30,   0,  30,
+        100,   0,  30,
+        30,  30,  30,
+        30,  30,  30,
+        100,   0,  30,
+        100,  30,  30,
+
+        // middle rung back
+        30,  60,  30,
+        67,  60,  30,
+        30,  90,  30,
+        30,  90,  30,
+        67,  60,  30,
+        67,  90,  30,
+
+        // top
+        0,   0,   0,
+        100,   0,   0,
+        100,   0,  30,
+        0,   0,   0,
+        100,   0,  30,
+        0,   0,  30,
+
+        // top rung right
+        100,   0,   0,
+        100,  30,   0,
+        100,  30,  30,
+        100,   0,   0,
+        100,  30,  30,
+        100,   0,  30,
+
+        // under top rung
+        30,   30,   0,
+        30,   30,  30,
+        100,  30,  30,
+        30,   30,   0,
+        100,  30,  30,
+        100,  30,   0,
+
+        // between top rung and middle
+        30,   30,   0,
+        30,   60,  30,
+        30,   30,  30,
+        30,   30,   0,
+        30,   60,   0,
+        30,   60,  30,
+
+        // top of middle rung
+        30,   60,   0,
+        67,   60,  30,
+        30,   60,  30,
+        30,   60,   0,
+        67,   60,   0,
+        67,   60,  30,
+
+        // right of middle rung
+        67,   60,   0,
+        67,   90,  30,
+        67,   60,  30,
+        67,   60,   0,
+        67,   90,   0,
+        67,   90,  30,
+
+        // bottom of middle rung.
+        30,   90,   0,
+        30,   90,  30,
+        67,   90,  30,
+        30,   90,   0,
+        67,   90,  30,
+        67,   90,   0,
+
+        // right of bottom
+        30,   90,   0,
+        30,  150,  30,
+        30,   90,  30,
+        30,   90,   0,
+        30,  150,   0,
+        30,  150,  30,
+
+        // bottom
+        0,   150,   0,
+        0,   150,  30,
+        30,  150,  30,
+        0,   150,   0,
+        30,  150,  30,
+        30,  150,   0,
+
+        // left side
+        0,   0,   0,
+        0,   0,  30,
+        0, 150,  30,
+        0,   0,   0,
+        0, 150,  30,
+        0, 150,   0,
+    ]);
+
+    // Center the F around the origin and Flip it around. We do this because
+    // we're in 3D now with and +Y is up where as before when we started with 2D
+    // we had +Y as down.
+
+    // We could do by changing all the values above but I'm lazy.
+    // We could also do it with a matrix at draw time but you should
+    // never do stuff at draw time if you can do it at init time.
+    let matrix = m4.xRotation(Math.PI);
+    matrix = m4.translate(matrix, -50, -75, -15);
+
+    for (let ii = 0; ii < positions.length; ii += 3) {
+        const vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
+        positions[ii + 0] = vector[0];
+        positions[ii + 1] = vector[1];
+        positions[ii + 2] = vector[2];
+    }
+
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+}
+
+// Fill the current ARRAY_BUFFER buffer with colors for the 'F'.
+function setColors(gl) {
+    gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Uint8Array([
+            // left column front
+            200,  70, 120,
+            200,  70, 120,
+            200,  70, 120,
+            200,  70, 120,
+            200,  70, 120,
+            200,  70, 120,
+
+            // top rung front
+            100, 70, 210,
+            100, 70, 210,
+            100, 70, 210,
+            100, 70, 210,
+            100, 70, 210,
+            100, 70, 210,
+
+            // middle rung front
+            120,  70, 120,
+            120,  70, 120,
+            120,  70, 120,
+            120,  70, 120,
+            120,  70, 120,
+            120,  70, 120,
+
+            // left column back
+            80, 70, 150,
+            80, 70, 150,
+            80, 70, 150,
+            80, 70, 150,
+            80, 70, 150,
+            80, 70, 150,
+
+            // top rung back
+            80, 70, 200,
+            80, 70, 200,
+            80, 70, 200,
+            80, 70, 200,
+            80, 70, 200,
+            80, 70, 200,
+
+            // middle rung back
+            70, 200, 210,
+            70, 200, 210,
+            70, 200, 210,
+            70, 200, 210,
+            70, 200, 210,
+            70, 200, 210,
+
+            // // top
+            // 70, 200, 210,
+            // 70, 200, 210,
+            // 70, 200, 210,
+            // 70, 200, 210,
+            // 70, 200, 210,
+            // 70, 200, 210,
+            //
+            // // top rung right
+            // 200, 200, 70,
+            // 200, 200, 70,
+            // 200, 200, 70,
+            // 200, 200, 70,
+            // 200, 200, 70,
+            // 200, 200, 70,
+            //
+            // // under top rung
+            // 210, 100, 70,
+            // 210, 100, 70,
+            // 210, 100, 70,
+            // 210, 100, 70,
+            // 210, 100, 70,
+            // 210, 100, 70,
+            //
+            // // between top rung and middle
+            // 210, 160, 70,
+            // 210, 160, 70,
+            // 210, 160, 70,
+            // 210, 160, 70,
+            // 210, 160, 70,
+            // 210, 160, 70,
+            //
+            // // top of middle rung
+            // 70, 180, 210,
+            // 70, 180, 210,
+            // 70, 180, 210,
+            // 70, 180, 210,
+            // 70, 180, 210,
+            // 70, 180, 210,
+            //
+            // // right of middle rung
+            // 100, 70, 210,
+            // 100, 70, 210,
+            // 100, 70, 210,
+            // 100, 70, 210,
+            // 100, 70, 210,
+            // 100, 70, 210,
+            //
+            // // bottom of middle rung.
+            // 76, 210, 100,
+            // 76, 210, 100,
+            // 76, 210, 100,
+            // 76, 210, 100,
+            // 76, 210, 100,
+            // 76, 210, 100,
+            //
+            // // right of bottom
+            // 140, 210, 80,
+            // 140, 210, 80,
+            // 140, 210, 80,
+            // 140, 210, 80,
+            // 140, 210, 80,
+            // 140, 210, 80,
+            //
+            // // bottom
+            // 90, 130, 110,
+            // 90, 130, 110,
+            // 90, 130, 110,
+            // 90, 130, 110,
+            // 90, 130, 110,
+            // 90, 130, 110,
+            //
+            // // left side
+            // 160, 160, 220,
+            // 160, 160, 220,
+            // 160, 160, 220,
+            // 160, 160, 220,
+            // 160, 160, 220,
+            // 160, 160, 220,
+        ]),
+        gl.STATIC_DRAW);
+}
+
+var m4 = {
+
+    perspective: function(fieldOfViewInRadians, aspect, near, far) {
+        const f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewInRadians);
+        const rangeInv = 1.0 / (near - far);
+
+        return [
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (near + far) * rangeInv, -1,
+            0, 0, near * far * rangeInv * 2, 0,
+        ];
+    },
+
+    projection: function(width, height, depth) {
+        // Note: This matrix flips the Y axis so 0 is at the top.
+        return [
+            2 / width, 0, 0, 0,
+            0, -2 / height, 0, 0,
+            0, 0, 2 / depth, 0,
+            -1, 1, 0, 1,
+        ];
+    },
+
+    multiply: function(a, b) {
+        const a00 = a[0 * 4 + 0];
+        const a01 = a[0 * 4 + 1];
+        const a02 = a[0 * 4 + 2];
+        const a03 = a[0 * 4 + 3];
+        const a10 = a[1 * 4 + 0];
+        const a11 = a[1 * 4 + 1];
+        const a12 = a[1 * 4 + 2];
+        const a13 = a[1 * 4 + 3];
+        const a20 = a[2 * 4 + 0];
+        const a21 = a[2 * 4 + 1];
+        const a22 = a[2 * 4 + 2];
+        const a23 = a[2 * 4 + 3];
+        const a30 = a[3 * 4 + 0];
+        const a31 = a[3 * 4 + 1];
+        const a32 = a[3 * 4 + 2];
+        const a33 = a[3 * 4 + 3];
+        const b00 = b[0 * 4 + 0];
+        const b01 = b[0 * 4 + 1];
+        const b02 = b[0 * 4 + 2];
+        const b03 = b[0 * 4 + 3];
+        const b10 = b[1 * 4 + 0];
+        const b11 = b[1 * 4 + 1];
+        const b12 = b[1 * 4 + 2];
+        const b13 = b[1 * 4 + 3];
+        const b20 = b[2 * 4 + 0];
+        const b21 = b[2 * 4 + 1];
+        const b22 = b[2 * 4 + 2];
+        const b23 = b[2 * 4 + 3];
+        const b30 = b[3 * 4 + 0];
+        const b31 = b[3 * 4 + 1];
+        const b32 = b[3 * 4 + 2];
+        const b33 = b[3 * 4 + 3];
+        return [
+            b00 * a00 + b01 * a10 + b02 * a20 + b03 * a30,
+            b00 * a01 + b01 * a11 + b02 * a21 + b03 * a31,
+            b00 * a02 + b01 * a12 + b02 * a22 + b03 * a32,
+            b00 * a03 + b01 * a13 + b02 * a23 + b03 * a33,
+            b10 * a00 + b11 * a10 + b12 * a20 + b13 * a30,
+            b10 * a01 + b11 * a11 + b12 * a21 + b13 * a31,
+            b10 * a02 + b11 * a12 + b12 * a22 + b13 * a32,
+            b10 * a03 + b11 * a13 + b12 * a23 + b13 * a33,
+            b20 * a00 + b21 * a10 + b22 * a20 + b23 * a30,
+            b20 * a01 + b21 * a11 + b22 * a21 + b23 * a31,
+            b20 * a02 + b21 * a12 + b22 * a22 + b23 * a32,
+            b20 * a03 + b21 * a13 + b22 * a23 + b23 * a33,
+            b30 * a00 + b31 * a10 + b32 * a20 + b33 * a30,
+            b30 * a01 + b31 * a11 + b32 * a21 + b33 * a31,
+            b30 * a02 + b31 * a12 + b32 * a22 + b33 * a32,
+            b30 * a03 + b31 * a13 + b32 * a23 + b33 * a33,
+        ];
+    },
+
+    translation: function(tx, ty, tz) {
+        return [
+            1,  0,  0,  0,
+            0,  1,  0,  0,
+            0,  0,  1,  0,
+            tx, ty, tz, 1,
+        ];
+    },
+
+    xRotation: function(angleInRadians) {
+        const c = Math.cos(angleInRadians);
+        const s = Math.sin(angleInRadians);
+
+        return [
+            1, 0, 0, 0,
+            0, c, s, 0,
+            0, -s, c, 0,
+            0, 0, 0, 1,
+        ];
+    },
+
+    yRotation: function(angleInRadians) {
+        var c = Math.cos(angleInRadians);
+        var s = Math.sin(angleInRadians);
+
+        return [
+            c, 0, -s, 0,
+            0, 1, 0, 0,
+            s, 0, c, 0,
+            0, 0, 0, 1,
+        ];
+    },
+
+    zRotation: function(angleInRadians) {
+        const c = Math.cos(angleInRadians);
+        const s = Math.sin(angleInRadians);
+
+        return [
+            c, s, 0, 0,
+            -s, c, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+        ];
+    },
+
+    scaling: function(sx, sy, sz) {
+        return [
+            sx, 0,  0,  0,
+            0, sy,  0,  0,
+            0,  0, sz,  0,
+            0,  0,  0,  1,
+        ];
+    },
+
+    translate: function(m, tx, ty, tz) {
+        return m4.multiply(m, m4.translation(tx, ty, tz));
+    },
+
+    xRotate: function(m, angleInRadians) {
+        return m4.multiply(m, m4.xRotation(angleInRadians));
+    },
+
+    yRotate: function(m, angleInRadians) {
+        return m4.multiply(m, m4.yRotation(angleInRadians));
+    },
+
+    zRotate: function(m, angleInRadians) {
+        return m4.multiply(m, m4.zRotation(angleInRadians));
+    },
+
+    scale: function(m, sx, sy, sz) {
+        return m4.multiply(m, m4.scaling(sx, sy, sz));
+    },
+
+    inverse: function(m) {
+        const m00 = m[0 * 4 + 0];
+        const m01 = m[0 * 4 + 1];
+        const m02 = m[0 * 4 + 2];
+        const m03 = m[0 * 4 + 3];
+        const m10 = m[1 * 4 + 0];
+        const m11 = m[1 * 4 + 1];
+        const m12 = m[1 * 4 + 2];
+        const m13 = m[1 * 4 + 3];
+        const m20 = m[2 * 4 + 0];
+        const m21 = m[2 * 4 + 1];
+        const m22 = m[2 * 4 + 2];
+        const m23 = m[2 * 4 + 3];
+        const m30 = m[3 * 4 + 0];
+        const m31 = m[3 * 4 + 1];
+        const m32 = m[3 * 4 + 2];
+        const m33 = m[3 * 4 + 3];
+        const tmp_0  = m22 * m33;
+        const tmp_1  = m32 * m23;
+        const tmp_2  = m12 * m33;
+        const tmp_3  = m32 * m13;
+        const tmp_4  = m12 * m23;
+        const tmp_5  = m22 * m13;
+        const tmp_6  = m02 * m33;
+        const tmp_7  = m32 * m03;
+        const tmp_8  = m02 * m23;
+        const tmp_9  = m22 * m03;
+        const tmp_10 = m02 * m13;
+        const tmp_11 = m12 * m03;
+        const tmp_12 = m20 * m31;
+        const tmp_13 = m30 * m21;
+        const tmp_14 = m10 * m31;
+        const tmp_15 = m30 * m11;
+        const tmp_16 = m10 * m21;
+        const tmp_17 = m20 * m11;
+        const tmp_18 = m00 * m31;
+        const tmp_19 = m30 * m01;
+        const tmp_20 = m00 * m21;
+        const tmp_21 = m20 * m01;
+        const tmp_22 = m00 * m11;
+        const tmp_23 = m10 * m01;
+
+        const t0 = (tmp_0 * m11 + tmp_3 * m21 + tmp_4 * m31) -
+            (tmp_1 * m11 + tmp_2 * m21 + tmp_5 * m31);
+        const t1 = (tmp_1 * m01 + tmp_6 * m21 + tmp_9 * m31) -
+            (tmp_0 * m01 + tmp_7 * m21 + tmp_8 * m31);
+        const t2 = (tmp_2 * m01 + tmp_7 * m11 + tmp_10 * m31) -
+            (tmp_3 * m01 + tmp_6 * m11 + tmp_11 * m31);
+        const t3 = (tmp_5 * m01 + tmp_8 * m11 + tmp_11 * m21) -
+            (tmp_4 * m01 + tmp_9 * m11 + tmp_10 * m21);
+
+        const d = 1.0 / (m00 * t0 + m10 * t1 + m20 * t2 + m30 * t3);
+
+        return [
+            d * t0,
+            d * t1,
+            d * t2,
+            d * t3,
+            d * ((tmp_1 * m10 + tmp_2 * m20 + tmp_5 * m30) -
+                (tmp_0 * m10 + tmp_3 * m20 + tmp_4 * m30)),
+            d * ((tmp_0 * m00 + tmp_7 * m20 + tmp_8 * m30) -
+                (tmp_1 * m00 + tmp_6 * m20 + tmp_9 * m30)),
+            d * ((tmp_3 * m00 + tmp_6 * m10 + tmp_11 * m30) -
+                (tmp_2 * m00 + tmp_7 * m10 + tmp_10 * m30)),
+            d * ((tmp_4 * m00 + tmp_9 * m10 + tmp_10 * m20) -
+                (tmp_5 * m00 + tmp_8 * m10 + tmp_11 * m20)),
+            d * ((tmp_12 * m13 + tmp_15 * m23 + tmp_16 * m33) -
+                (tmp_13 * m13 + tmp_14 * m23 + tmp_17 * m33)),
+            d * ((tmp_13 * m03 + tmp_18 * m23 + tmp_21 * m33) -
+                (tmp_12 * m03 + tmp_19 * m23 + tmp_20 * m33)),
+            d * ((tmp_14 * m03 + tmp_19 * m13 + tmp_22 * m33) -
+                (tmp_15 * m03 + tmp_18 * m13 + tmp_23 * m33)),
+            d * ((tmp_17 * m03 + tmp_20 * m13 + tmp_23 * m23) -
+                (tmp_16 * m03 + tmp_21 * m13 + tmp_22 * m23)),
+            d * ((tmp_14 * m22 + tmp_17 * m32 + tmp_13 * m12) -
+                (tmp_16 * m32 + tmp_12 * m12 + tmp_15 * m22)),
+            d * ((tmp_20 * m32 + tmp_12 * m02 + tmp_19 * m22) -
+                (tmp_18 * m22 + tmp_21 * m32 + tmp_13 * m02)),
+            d * ((tmp_18 * m12 + tmp_23 * m32 + tmp_15 * m02) -
+                (tmp_22 * m32 + tmp_14 * m02 + tmp_19 * m12)),
+            d * ((tmp_22 * m22 + tmp_16 * m02 + tmp_21 * m12) -
+                (tmp_20 * m12 + tmp_23 * m22 + tmp_17 * m02)),
+        ];
+    },
+
+    transformVector: function(m, v) {
+        const dst = [];
+        for (let i = 0; i < 4; ++i) {
+            dst[i] = 0.0;
+            for (let j = 0; j < 4; ++j) {
+                dst[i] += v[j] * m[j * 4 + i];
+            }
+        }
+        return dst;
+    },
+
+};
+
+main();
+

@@ -1,17 +1,20 @@
 #version 300 es
 
-in vec4 a_position;
-in vec4 a_color;
+// an attribute is an input (in) to a vertex shader.
+// It will receive data from a buffer
+in vec3 a_position;
 
-uniform mat4 u_viewProjection;
-uniform mat4 u_world;
+// translation to add to position
+uniform vec3 u_translation;
 
-out vec4 v_color;
+// rotation values
+uniform vec3 u_rotation;
 
+// scale values
+uniform vec3 u_scale;
+
+// all shaders have a main function
 void main() {
-  // Multiply the position by the matrix.
-  gl_Position = u_viewProjection *  u_world * a_position;
-
-  // Pass the color to the fragment shader.
-  v_color = a_color;
+    vec3 position = a_position + u_translation;
+gl_Position = vec4(position, 1);
 }
