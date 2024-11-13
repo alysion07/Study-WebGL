@@ -109,23 +109,46 @@ function main() {
     // First let's make some variables
     // to hold the translation,
     const fieldOfViewRadians = degToRad(60);
-    let cameraAngleRadians = degToRad(0);
-    let cameraAngleRadiansY = degToRad(0);
-    let cameraAngleRadiansZ = degToRad(0);
+    let cameraPosition = [0,0,5];
+    let cameraRotation = [degToRad(0), degToRad(0), degToRad(0)];
 
     drawScene();
 
     // Setup a ui.
-    webglLessonsUI.setupSlider("#x", {value: radToDeg(cameraAngleRadians), slide: updateCameraAngle, min: -360, max: 360});
-    webglLessonsUI.setupSlider("#y", {value: radToDeg(cameraAngleRadiansY), slide: updateCameraAngle, min: -360, max: 360});
-    webglLessonsUI.setupSlider("#z", {value: radToDeg(cameraAngleRadiansZ), slide: updateCameraAngle, min: -360, max: 360});
-  //  webglLessonsUI.setupSlider("#x", {value: translation[0], slide: updatePosition(0), max: gl.canvas.width });
+    webglLessonsUI.setupSlider("#x", {value: radToDeg(cameraPosition[0]), slide: updateCameraPositionX, min: 0, max: canvas.width});
+    webglLessonsUI.setupSlider("#y", {value: radToDeg(cameraPosition[1]), slide: updateCameraPositionY, min: 0, max: canvas.height});
+    webglLessonsUI.setupSlider("#z", {value: radToDeg(cameraPosition[2]), slide: updateCameraPositionZ, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#rotate_x", {value: radToDeg(cameraRotation[0]), slide: updateCameraAngleX, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#rotate_y", {value: radToDeg(cameraRotation[1]), slide: updateCameraAngleY, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#rotate_z", {value: radToDeg(cameraRotation[2]), slide: updateCameraAngleZ, min: -360, max: 360});
 
-    function updateCameraAngle(event, ui) {
-        cameraAngleRadians = degToRad(ui.value);
-
+    function updateCameraPositionX(event, ui) {
+        cameraPosition[0] = ui.value;
         drawScene();
     }
+    function updateCameraPositionY(event, ui) {
+        cameraPosition[1] = ui.value;
+        drawScene();
+    }
+    function updateCameraPositionZ(event, ui) {
+        cameraPosition[2] = ui.value;
+        drawScene();
+    }
+    function updateCameraAngleX(event, ui) {
+        cameraRotation[0] = degToRad(ui.value);
+        drawScene();
+    }
+
+    function updateCameraAngleY(event, ui) {
+        cameraRotation[1] = degToRad(ui.value);
+        drawScene();
+    }
+
+    function updateCameraAngleZ(event, ui) {
+        cameraRotation[2] = degToRad(ui.value);
+        drawScene();
+    }
+
 
     // Draw the scene.
     function drawScene() {
@@ -145,8 +168,6 @@ function main() {
 
         // turn on depth testing
         gl.enable(gl.DEPTH_TEST);
-
-        // tell webgl to cull faces
         gl.enable(gl.CULL_FACE);
 
         // Tell it to use our program (pair of shaders)
@@ -158,11 +179,16 @@ function main() {
         // Compute the matrix
         const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
         const zNear = 1;
-        const zFar = 2000;
+        const zFar = 2000; // near 와 far의 차이가 10^6 이상 차이나면 재미있어짐.
         const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
 
-        let cameraMatrix = m4.yRotation(cameraAngleRadians);
-        cameraMatrix = m4.translate(cameraMatrix, 0, 0, radius * 1.5);
+        let cameraMatrix = m4.identity();
+        cameraMatrix = m4.xRotate(cameraMatrix, cameraRotation[0]);
+        cameraMatrix = m4.yRotate(cameraMatrix, cameraRotation[1]);
+        cameraMatrix = m4.zRotate(cameraMatrix, cameraRotation[2]);
+        cameraMatrix = m4.translate(cameraMatrix, cameraPosition[0],cameraPosition[1], cameraPosition[2]);
+
+         //cameraMatrix = m4.translation(cameraPosition[0],cameraPosition[1], cameraPosition[2]);
 
         // Make a view matrix from the camera matrix.
         const viewMatrix = m4.inverse(cameraMatrix);
@@ -173,14 +199,14 @@ function main() {
 
         // Draw 'F's in a circle
         for (let ii = 0; ii < objectCount; ++ii) {
-            const angle = ii * Math.PI * 2 / objectCount;
-
-            const x = Math.cos(angle) * radius;
-            const z = Math.sin(angle) * radius;
-            const matrix = m4.translate(viewProjectionMatrix, x, 0, z);
-
-            // Set the matrix.
-            gl.uniformMatrix4fv(matrixLocation, false, matrix);
+            // const angle = ii * Math.PI * 2 / objectCount;
+            //
+            // const x = Math.cos(angle) * radius;
+            // const z = Math.sin(angle) * radius;
+            const matrix = m4.translate(viewProjectionMatrix, 0,0, 0);
+            //
+            // // Set the matrix.
+             gl.uniformMatrix4fv(matrixLocation, false, matrix);
 
             // Draw the geometry.
             const primitiveType = gl.TRIANGLES;
@@ -242,7 +268,8 @@ function setCube(gl) {
         -0.6,  1.0, -0.6
     ]);
 
-    let matrix  = m4.translation(0.5, 0.5, 0);
+ //   let matrix  = m4.translation(0.5, 0.5, 0.5);
+    let matrix  = m4.translation(0, 0, 0);
 
     for (let ii = 0; ii < positions.length; ii += 3) {
         const vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
@@ -544,7 +571,7 @@ function setColors(gl) {
         gl.STATIC_DRAW);
 }
 
-var m4 = {
+const  m4 = {
 
     perspective: function(fieldOfViewInRadians, aspect, near, far) {
         const f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewInRadians);
@@ -621,6 +648,15 @@ var m4 = {
         ];
     },
 
+    identity: function() {
+        return [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1,
+        ];
+    },
+
     translation: function(tx, ty, tz) {
         return [
             1,  0,  0,  0,
@@ -643,8 +679,8 @@ var m4 = {
     },
 
     yRotation: function(angleInRadians) {
-        var c = Math.cos(angleInRadians);
-        var s = Math.sin(angleInRadians);
+        const c = Math.cos(angleInRadians);
+        const s = Math.sin(angleInRadians);
 
         return [
             c, 0, -s, 0,
