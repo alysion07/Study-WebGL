@@ -110,46 +110,32 @@ function main() {
     // to hold the translation,
     const fieldOfViewRadians = degToRad(60);
     let cameraPosition = [0,0,5];
-    let cameraRotation = [degToRad(0), degToRad(0), degToRad(0)];
+    let modelPosition = [0,0,0];
+    let modelRotation = [degToRad(0), degToRad(0), degToRad(0)];
 
     drawScene();
 
     // Setup a ui.
-    webglLessonsUI.setupSlider("#x", {value: radToDeg(cameraPosition[0]), slide: updateCameraPositionX, min: 0, max: canvas.width});
-    webglLessonsUI.setupSlider("#y", {value: radToDeg(cameraPosition[1]), slide: updateCameraPositionY, min: 0, max: canvas.height});
-    webglLessonsUI.setupSlider("#z", {value: radToDeg(cameraPosition[2]), slide: updateCameraPositionZ, min: -360, max: 360});
-    webglLessonsUI.setupSlider("#rotate_x", {value: radToDeg(cameraRotation[0]), slide: updateCameraAngleX, min: -360, max: 360});
-    webglLessonsUI.setupSlider("#rotate_y", {value: radToDeg(cameraRotation[1]), slide: updateCameraAngleY, min: -360, max: 360});
-    webglLessonsUI.setupSlider("#rotate_z", {value: radToDeg(cameraRotation[2]), slide: updateCameraAngleZ, min: -360, max: 360});
+    webglLessonsUI.setupSlider("#x", {value: radToDeg(modelPosition[0]), slide: updateModelPosition(0), min: -canvas.width/2, max: canvas.width/2, step: 0.01, precision: 2});
+    webglLessonsUI.setupSlider("#y", {value: radToDeg(modelPosition[1]), slide: updateModelPosition(1), min: -canvas.height/2, max: canvas.height/2, step: 0.01, precision: 2});
+    webglLessonsUI.setupSlider("#z", {value: radToDeg(modelPosition[2]), slide: updateModelPosition(2), min: -360, max: 360, step: 0.01, precision: 2});
+    webglLessonsUI.setupSlider("#rotate_x", {value: radToDeg(modelRotation[0]), slide: updateModelAngle(0), min: -360, max: 360});
+    webglLessonsUI.setupSlider("#rotate_y", {value: radToDeg(modelRotation[1]), slide: updateModelAngle(1), min: -360, max: 360});
+    webglLessonsUI.setupSlider("#rotate_z", {value: radToDeg(modelRotation[2]), slide: updateModelAngle(2), min: -360, max: 360});
 
-    function updateCameraPositionX(event, ui) {
-        cameraPosition[0] = ui.value;
-        drawScene();
-    }
-    function updateCameraPositionY(event, ui) {
-        cameraPosition[1] = ui.value;
-        drawScene();
-    }
-    function updateCameraPositionZ(event, ui) {
-        cameraPosition[2] = ui.value;
-        drawScene();
-    }
-    function updateCameraAngleX(event, ui) {
-        cameraRotation[0] = degToRad(ui.value);
-        drawScene();
+    function updateModelPosition(index) {
+        return function (event, ui){
+            modelPosition[index] = ui.value;
+            drawScene();
+        }
     }
 
-    function updateCameraAngleY(event, ui) {
-        cameraRotation[1] = degToRad(ui.value);
-        drawScene();
+    function updateModelAngle(index) {
+        return function(event, ui) {
+            modelRotation[index] = degToRad(360 - ui.value);
+            drawScene();
+        }
     }
-
-    function updateCameraAngleZ(event, ui) {
-        cameraRotation[2] = degToRad(ui.value);
-        drawScene();
-    }
-
-
     // Draw the scene.
     function drawScene() {
         //const objectCount = 5;
@@ -181,14 +167,18 @@ function main() {
         const zNear = 1;
         const zFar = 2000; // near 와 far의 차이가 10^6 이상 차이나면 재미있어짐.
         const projectionMatrix = m4.perspective(fieldOfViewRadians, aspect, zNear, zFar);
+        const  up = [0, 1, 0];
+        const targetPosition = [0, 0, 0];
 
-        let cameraMatrix = m4.identity();
-        cameraMatrix = m4.xRotate(cameraMatrix, cameraRotation[0]);
-        cameraMatrix = m4.yRotate(cameraMatrix, cameraRotation[1]);
-        cameraMatrix = m4.zRotate(cameraMatrix, cameraRotation[2]);
-        cameraMatrix = m4.translate(cameraMatrix, cameraPosition[0],cameraPosition[1], cameraPosition[2]);
+        let modelMatrix = m4.identity();
+        modelMatrix = m4.zRotate(modelMatrix, modelRotation[2]);
+        modelMatrix = m4.yRotate(modelMatrix, modelRotation[1]);
+        modelMatrix = m4.xRotate(modelMatrix, modelRotation[0]);
+        modelMatrix = m4.translate(modelMatrix, cameraPosition[0] * -1,cameraPosition[1] * -1, cameraPosition[2]);
 
-         //cameraMatrix = m4.translation(cameraPosition[0],cameraPosition[1], cameraPosition[2]);
+        // lookAt Cam
+        let cameraMatrix = m4.lookAt(cameraPosition, targetPosition, up);
+
 
         // Make a view matrix from the camera matrix.
         const viewMatrix = m4.inverse(cameraMatrix);
@@ -422,15 +412,15 @@ function setGeometry(gl) {
     // We could do by changing all the values above but I'm lazy.
     // We could also do it with a matrix at draw time but you should
     // never do stuff at draw time if you can do it at init time.
-    let matrix = m4.xRotation(Math.PI);
-    matrix = m4.translate(matrix, -50, -75, -15);
-
-    for (let ii = 0; ii < positions.length; ii += 3) {
-        const vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
-        positions[ii + 0] = vector[0];
-        positions[ii + 1] = vector[1];
-        positions[ii + 2] = vector[2];
-    }
+    // let matrix = m4.xRotation(Math.PI);
+    // matrix = m4.translate(matrix, -50, -75, -15);
+    //
+    // for (let ii = 0; ii < positions.length; ii += 3) {
+    //     const vector = m4.transformVector(matrix, [positions[ii + 0], positions[ii + 1], positions[ii + 2], 1]);
+    //     positions[ii + 0] = vector[0];
+    //     positions[ii + 1] = vector[1];
+    //     positions[ii + 2] = vector[2];
+    // }
 
     gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 }
@@ -463,6 +453,13 @@ function setColors(gl) {
             120,  70, 120,
             120,  70, 120,
             120,  70, 120,
+            // middle rung back
+            70, 255, 135,
+            70, 255, 135,
+            70, 255, 135,
+            70, 255, 135,
+            70, 255, 135,
+            70, 255, 135,
 
             // left column back
             80, 70, 150,
@@ -472,21 +469,17 @@ function setColors(gl) {
             80, 70, 150,
             80, 70, 150,
 
-            // top rung back
-            80, 70, 200,
-            80, 70, 200,
-            80, 70, 200,
-            80, 70, 200,
-            80, 70, 200,
-            80, 70, 200,
 
-            // middle rung back
-            70, 200, 210,
-            70, 200, 210,
-            70, 200, 210,
-            70, 200, 210,
-            70, 200, 210,
-            70, 200, 210,
+
+            // top rung back
+            255, 255, 0,
+            255, 255, 0,
+            255, 255, 0,
+            255, 255, 0,
+            255, 255, 0,
+            255, 255, 0,
+
+
 
             // // top
             // 70, 200, 210,
@@ -825,6 +818,41 @@ const  m4 = {
             }
         }
         return dst;
+    },
+
+    subtractVectors: function(a, b) {
+        return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    },
+
+    cross: function(a, b) {
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+    },
+    normalize: function(v) {
+        var length = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+        // make sure we don't divide by 0.
+        if (length > 0.00001) {
+            return [v[0] / length, v[1] / length, v[2] / length];
+        } else {
+            return [0, 0, 0];
+        }
+    },
+
+    lookAt: function(cameraPosition, target, up) {
+        const zAxis = m4.normalize(
+            m4.subtractVectors(cameraPosition, target));
+        const xAxis = m4.normalize(m4.cross(up, zAxis));
+        const yAxis = m4.normalize(m4.cross(zAxis, xAxis));
+
+        return [
+            xAxis[0], xAxis[1], xAxis[2], 0,
+            yAxis[0], yAxis[1], yAxis[2], 0,
+            zAxis[0], zAxis[1], zAxis[2], 0,
+            cameraPosition[0], cameraPosition[1], cameraPosition[2], 1,
+        ];
     },
 
 };

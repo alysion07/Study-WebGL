@@ -4,17 +4,10 @@
 // It will receive data from a buffer
 in vec3 a_position;
 
-// translation to add to position
-uniform vec3 u_translation;
-
-// rotation values
-uniform vec3 u_rotation;
-
-// scale values
-uniform vec3 u_scale;
+uniform mat4 u_modelMatrix;
+uniform mat4 u_projectionMatrix;
 
 // all shaders have a main function
 void main() {
-    vec3 position = a_position + u_translation;
-gl_Position = vec4(position, 1);
+    gl_Position = u_projectionMatrix * modelMatrix * vec4(a_position, 1.0) ;
 }
