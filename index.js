@@ -1,7 +1,5 @@
 // WebGL2 - 3D Camera
 // from https://webgl2fundamentals.org/webgl/webgl-3d-camera.html
-
-
 "use strict";
 
 const vertexShaderSource = `#version 300 es
@@ -9,12 +7,13 @@ const vertexShaderSource = `#version 300 es
 in vec4 a_position;
 in vec4 a_color;
 
-uniform mat4 u_matrix;
+uniform mat4 u_modelMatrix;
+uniform mat4 u_projectionMatrix;
 
 out vec4 v_color;
 
 void main() {
-  gl_Position = u_matrix * a_position;
+  gl_Position = u_projectionMatrix * u_modelMatrix * a_position;
   v_color = a_color;
 }
 `;
@@ -51,7 +50,8 @@ function main() {
     const colorAttributeLocation = gl.getAttribLocation(program, "a_color");
 
     // look up uniform locations
-    const matrixLocation = gl.getUniformLocation(program, "u_matrix");
+    const matrixLocation = gl.getUniformLocation(program, "u_modelMatrix");
+    const projectionMatrixLocation = gl.getUniformLocation(program, "u_projectionMatrix");
 
     // Create a buffer
     const positionBuffer = gl.createBuffer();
@@ -108,24 +108,31 @@ function main() {
 
     // First let's make some variables
     // to hold the translation,
-    const fieldOfViewRadians = degToRad(60);
-    let cameraPosition = [0,0,5];
+    const fieldOfViewRadians = degToRad(40);
+    let cameraPosition = [0,0,10];
     let modelPosition = [0,0,0];
     let modelRotation = [degToRad(0), degToRad(0), degToRad(0)];
 
     drawScene();
 
     // Setup a ui.
-    webglLessonsUI.setupSlider("#x", {value: radToDeg(modelPosition[0]), slide: updateModelPosition(0), min: -canvas.width/2, max: canvas.width/2, step: 0.01, precision: 2});
-    webglLessonsUI.setupSlider("#y", {value: radToDeg(modelPosition[1]), slide: updateModelPosition(1), min: -canvas.height/2, max: canvas.height/2, step: 0.01, precision: 2});
-    webglLessonsUI.setupSlider("#z", {value: radToDeg(modelPosition[2]), slide: updateModelPosition(2), min: -360, max: 360, step: 0.01, precision: 2});
-    webglLessonsUI.setupSlider("#rotate_x", {value: radToDeg(modelRotation[0]), slide: updateModelAngle(0), min: -360, max: 360});
-    webglLessonsUI.setupSlider("#rotate_y", {value: radToDeg(modelRotation[1]), slide: updateModelAngle(1), min: -360, max: 360});
-    webglLessonsUI.setupSlider("#rotate_z", {value: radToDeg(modelRotation[2]), slide: updateModelAngle(2), min: -360, max: 360});
+    webglLessonsUI.setupSlider("#x", {value: modelPosition[0], slide: updateModelPosition(0), min: -canvas.width/2, max: canvas.width/2, step: 0.1, precision: 1});
+    webglLessonsUI.setupSlider("#y", {value: modelPosition[1], slide: updateModelPosition(1), min: -canvas.height/2, max: canvas.height/2, step: 0.1, precision: 1});
+    webglLessonsUI.setupSlider("#z", {value: modelPosition[2], slide: updateModelPosition(2), min: -360, max: 360, step: 0.1, precision: 1});
+    webglLessonsUI.setupSlider("#rotate_x", {value: radToDeg(modelRotation[0]), slide: updateModelAngle(0), min: 0, max: 360});
+    webglLessonsUI.setupSlider("#rotate_y", {value: radToDeg(modelRotation[1]), slide: updateModelAngle(1), min: 0, max: 360});
+    webglLessonsUI.setupSlider("#rotate_z", {value: radToDeg(modelRotation[2]), slide: updateModelAngle(2), min: 0, max: 360});
 
     function updateModelPosition(index) {
         return function (event, ui){
-            modelPosition[index] = ui.value;
+            // if (index === 0) {
+            //     cameraPosition[0] = ui.value/canvas.clientWidth * 0.5;
+            // } else if (index === 1) {
+            //     cameraPosition[1] = ui.value/canvas.clientHeight *  0.5;
+            // } else {
+            //     cameraPosition[2] = ui.value/180;
+            // }
+            modelPosition[index] = ui.value * 0.01;
             drawScene();
         }
     }
@@ -171,14 +178,14 @@ function main() {
         const targetPosition = [0, 0, 0];
 
         let modelMatrix = m4.identity();
+        modelMatrix = m4.translate(modelMatrix, modelPosition[0],modelPosition[1], modelPosition[2]);
         modelMatrix = m4.zRotate(modelMatrix, modelRotation[2]);
-        modelMatrix = m4.yRotate(modelMatrix, modelRotation[1]);
         modelMatrix = m4.xRotate(modelMatrix, modelRotation[0]);
-        modelMatrix = m4.translate(modelMatrix, cameraPosition[0] * -1,cameraPosition[1] * -1, cameraPosition[2]);
+        modelMatrix = m4.yRotate(modelMatrix, modelRotation[1]);
+        const modelMatrix2 = modelMatrix;
 
         // lookAt Cam
-        let cameraMatrix = m4.lookAt(cameraPosition, targetPosition, up);
-
+        const cameraMatrix = m4.lookAt(cameraPosition, targetPosition, up);
 
         // Make a view matrix from the camera matrix.
         const viewMatrix = m4.inverse(cameraMatrix);
@@ -189,14 +196,9 @@ function main() {
 
         // Draw 'F's in a circle
         for (let ii = 0; ii < objectCount; ++ii) {
-            // const angle = ii * Math.PI * 2 / objectCount;
-            //
-            // const x = Math.cos(angle) * radius;
-            // const z = Math.sin(angle) * radius;
-            const matrix = m4.translate(viewProjectionMatrix, 0,0, 0);
-            //
-            // // Set the matrix.
-             gl.uniformMatrix4fv(matrixLocation, false, matrix);
+            // Set the matrix.
+             gl.uniformMatrix4fv(matrixLocation, false, modelMatrix2);
+             gl.uniformMatrix4fv(projectionMatrixLocation, false, viewProjectionMatrix);
 
             // Draw the geometry.
             const primitiveType = gl.TRIANGLES;
@@ -204,7 +206,11 @@ function main() {
             const count = 6 * 6; // 16 face , 6 coordinates
             gl.drawArrays(primitiveType, offset, count);
         }
+
+        requestAnimationFrame(drawScene);
+
     }
+    requestAnimationFrame(drawScene);
 }
 
 function setCube(gl) {

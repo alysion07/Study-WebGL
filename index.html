@@ -3,61 +3,105 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>WebGL2 - Multiple Objects - list optimized</title>
-    <style>
-        html, body {
-            margin: 0;
-            height: 100%;
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+        {
+          "imports": {
+            "@material/web/": "https://esm.run/@material/web/"
+          }
         }
-        canvas {
-            /*width: 100vw;*/
-            /*height: 100vh;*/
-            width: 400px;
-            height: 300px;
-            display: block;
+    </script>
+    <script type="module">
+        import '@material/web/all.js';
+        import {styles as typescaleStyles} from '@material/web/typography/md-typescale-styles.js';
+        import '@material/web/button/filled-button.js';
+        import '@material/web/button/outlined-button.js';
+        document.adoptedStyleSheets.push(typescaleStyles.styleSheet);
+    </script>
+    <title>WebGL2 - Multiple Objects - List Optimized</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        #container {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        #canvas {
+            flex: 3;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+        }
+        #uiContainer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
         }
         .description {
-            position: absolute;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        #ui div {
+            margin-bottom: 10px;
+        }
+        #error-box {
+            margin-top: 20px;
             padding: 10px;
-            background: rgba(0, 0, 0, 0.7);
-            color: white;
+            border: 1px solid #d9534f;
+            border-radius: 5px;
+            color: #d9534f;
+            background-color: #f2dede;
+        }
+        .error-box-title {
+            font-weight: bold;
         }
     </style>
-
 </head>
 <body>
-<div class="description">
-    Draw multiple objects by list with optimization checks
+
+<div id="container">
+    <canvas id="canvas"></canvas>
+    <div id="uiContainer">
+        <div class="description">
+            Draw multiple objects by list with optimization checks
+        </div>
+        <div id="ui">
+            <div id="x">X Position</div>
+            <div id="y">Y Position</div>
+            <div id="z">Z Position</div>
+            <div id="rotate_x">Rotate X</div>
+            <div id="rotate_y">Rotate Y</div>
+            <div id="rotate_z">Rotate Z</div>
+            <md-outlined-button>Back</md-outlined-button>
+            <md-filled-button>Next</md-filled-button>
+        </div>
+        <div id="error-box">
+            <span class="error-box-title">ERROR MESSAGES if any, go in here.</span>
+        </div>
+    </div>
 </div>
+
 <script src="https://webgl2fundamentals.org/webgl/resources/twgl-full.min.js"></script>
 <script src="https://webgl2fundamentals.org/webgl/resources/m4.js"></script>
 <script src="https://webgl2fundamentals.org/webgl/resources/flattened-primitives.js"></script>
 <script src="https://webgl2fundamentals.org/webgl/resources/chroma.min.js"></script>
 <script src="https://webgl2fundamentals.org/webgl/resources/webgl-utils.js"></script>
 <script src="./resources/webgl-lessons-ui.js"></script>
-
-<canvas id="canvas"></canvas>
-<div id="uiContainer">
-    <div id="ui">
-        <div id="x"></div>
-        <div id="y"></div>
-        <div id="z"></div>
-        <div id="rotate_x"></div>
-        <div id="rotate_y"></div>
-        <div id="rotate_z"></div>
-    </div>
-</div>
-<div id="error-box">
-    <span class="error-box-title">ERROR MESSAGES if any, go in here.</span>
-</div>
-<!--<script src="./resources/twgl-full.min.js"></script>-->
-<!--<script src="./resources/chroma.min.js"></script>-->
-<!--<script src="./resources/m4.js"></script>-->
-<!--<script src="./resources/flattened-primitives.js"></script>-->
 <script src="index.js"></script>
-
-
-
 
 </body>
 </html>

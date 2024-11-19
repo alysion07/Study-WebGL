@@ -683,7 +683,7 @@ function openInJSGist() {
     settings: {},
     files: [
       { name: 'index.html', content: scripts.html + fixHTMLForCodeSite(htmlParts.html.sources[0].source), },
-      { name: 'style.css', content: htmlParts.css.sources[0].source, },
+      { name: 'index.css', content: htmlParts.css.sources[0].source, },
       { name: 'index.js', content: comment + fixJSForCodeSite(scripts.js), },
     ],
   };

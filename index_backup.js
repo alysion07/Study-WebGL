@@ -189,8 +189,6 @@ async function main() {
 
     requestAnimationFrame(drawScene);
 
-    requestAnimationFrame(drawScene);
-
     function drawObjects(objectsToDraw, overrideProgramInfo) {
         objectsToDraw.forEach(function(object) {
             const programInfo = overrideProgramInfo || object.programInfo;
